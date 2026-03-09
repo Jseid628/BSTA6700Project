@@ -1,0 +1,103 @@
+---
+title: "MCreproduce"
+output: pdf_document
+date: "2026-03-09"
+---
+
+1. First, learn how to do a Monte-Carlo simulation.
+2. Then figure out how to implement the multi-outcomes estimator.
+3. Then generate the data.
+4. Then run the simulation.
+
+
+# Monte-Carlo Simluation Study in R
+
+- True value of target parameter is known and is used to generate the data.
+
+What is the target parameter?
+- The target parameter is the counterfactual estimate under control.
+
+MC simulation framework:
+1. Generate $S$ independent data sets under the conditions of interest
+2. Compute the statistic of interest (bias) for each one.
+3. Mean of the biases should be a good estimator for true bias.
+
+Before writing code:
+- Bias is the estimator of interest.
+- Fully specify data generating model
+- Random number generator
+
+
+
+# Toy Example of Monte-Carlo Simulation Study
+
+\textcolor{red}{Have I properly set the seed for reproducibility?}
+
+We propose the sample mean as an estimator of the population mean. Assume data are generated from $N(0,1)$. We find the bias of our estimator.
+
+```{r}
+# for reproducibility
+set.seed(215)
+
+# a function to generate S independent data sets, reproducibly
+mc_experiment <- function(S, n) {
+  # list of what we will return
+  return_vals <- list()
+  # will be populated with multiple independent data sets
+  data_list <- list()
+  # number of data sets is S
+  for (s in 1:S) {
+    # number of normal (0,1) samples is n
+    data <- rnorm(n)
+    data_list[[s]] <- data
+  }
+  # now we calculate the sample means
+  sample_means <- list()
+  for (s in 1:S) {
+    X_bar <- mean(data_list[[s]])
+    sample_means[[s]] <- X_bar
+  }
+  # calculate the MC estimator of the bias (S replicates)
+  sample_means <- unlist(sample_means)
+  mc_bias <- mean(sample_means)
+  # put the values to return in a list and return them
+  return_vals[["data_list"]] <- data_list
+  return_vals[["mc_bias"]] <- mc_bias
+  return (return_vals)
+}
+```
+
+```{r}
+# to have reproducible results, these have to be the same
+# changing these experiment hyperparameters changes the results.
+num_experiments = 3
+S = 2
+n_obs = 10
+
+# run the experiment - we get the same thing every time.
+for (e in 1:num_experiments) {
+  # get a list of data sets
+  return_vals <- mc_experiment(S, n_obs)
+  data_list <- return_vals[["data_list"]]
+  mc_bias <- return_vals[["mc_bias"]]
+  
+  # print the generated data sets
+  for (s in 1:S) {
+    cat("data_list", s, ": ", data_list[[s]],"\n")
+  }
+  cat("mc_bias: ",mc_bias,"\n")
+}
+```
+
+```{r}
+# using micro benchmark to time mc_experiment
+iterate <- function(S, n_obs) {
+  mc_experiment(S,n_obs)
+}
+
+library(microbenchmark)
+microbenchmark(
+  iterate(S,n_obs)
+)
+```
+
