@@ -27,8 +27,6 @@ Before writing code:
 - Fully specify data generating model
 - Random number generator
 
-
-
 # Toy Example of Monte-Carlo Simulation Study
 
 \textcolor{red}{Have I properly set the seed for reproducibility?}
@@ -101,3 +99,55 @@ microbenchmark(
 )
 ```
 
+# Improved MC Simulation Study Using Mclapply
+
+```{r}
+
+
+
+# a function to generate S independent data sets, reproducibly
+mc_experiment <- function(S) {
+  # hard code the size of the observation vector
+  n <- 10
+  # list of what we will return
+  return_vals <- list()
+  # will be populated with multiple independent data sets
+  data_list <- list()
+  # number of data sets is S
+  for (s in 1:S) {
+    # number of normal (0,1) samples is n
+    data <- rnorm(n)
+    data_list[[s]] <- data
+  }
+  # now we calculate the sample means
+  sample_means <- list()
+  for (s in 1:S) {
+    X_bar <- mean(data_list[[s]])
+    sample_means[[s]] <- X_bar
+  }
+  # calculate the MC estimator of the bias (S replicates)
+  sample_means <- unlist(sample_means)
+  mc_bias <- mean(sample_means)
+  # put the values to return in a list and return them
+  return_vals[["data_list"]] <- data_list
+  return_vals[["mc_bias"]] <- mc_bias
+  return (return_vals)
+}
+```
+
+```{r}
+num_cores = 14
+
+iterate <- function(K,num_cores) {
+  output <- mclapply(1:K, function(i) mc_experiment(K), mc.cores=num_cores)
+  return (output)
+}
+```
+
+```{r}
+microbenchmark(
+  for (i in 1:5){
+    iterate(1000,14)
+  }
+)
+```
