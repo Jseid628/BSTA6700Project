@@ -102,9 +102,6 @@ microbenchmark(
 # Improved MC Simulation Study Using Mclapply
 
 ```{r}
-
-
-
 # a function to generate S independent data sets, reproducibly
 mc_experiment <- function(S) {
   # hard code the size of the observation vector
@@ -136,18 +133,61 @@ mc_experiment <- function(S) {
 ```
 
 ```{r}
-num_cores = 14
+# to have this generate the same data sets each time, need to put the
+# set seed in the same chunk as function call.
+set.seed(215)
+
+output_list <- list()
+for (i in 1:2){
+  output <- mc_experiment(3)
+  output_list <- append(output_list, output)
+}
+
+# notice that different data sets are generated each time
+# we call the function, but when we run it again, 
+# we get the same output.
+output_list
+```
+
+```{r}
+library(parallel)
+num_cores = 4
+set.seed(215)
 
 iterate <- function(K,num_cores) {
-  output <- mclapply(1:K, function(i) mc_experiment(K), mc.cores=num_cores)
+  RNGkind("L'Ecuyer-CMRG")
+  set.seed (215)
+  # does mc_experiment K times, throws away idx i \in [1,K].
+  output <- mclapply(1:K,
+                     function(i) mc_experiment(K),
+                     mc.cores=num_cores,
+                     mc.set.seed = TRUE) # default, but added for clarity.
   return (output)
 }
 ```
 
 ```{r}
-microbenchmark(
-  for (i in 1:5){
-    iterate(1000,14)
+biases <- list()
+mb <- microbenchmark(
+  # rename here to make row names helpful
+  iterate_5_times = for (i in 1:5){
+    bias <- iterate(100,3)
+    biases <- append(biases, bias[[1]][2])
   }
 )
 ```
+
+```{r}
+biases <- list()
+for (i in 1:5){
+    bias <- iterate(100,2)
+    biases <- append(biases, bias[[1]]["mc_bias"])
+  }
+
+# unlist to convert list into
+biases <- unlist(biases)
+mc_bias_estimate <- mean(biases)
+cat("The estimated bias is:", mc_bias_estimate)
+```
+
+
