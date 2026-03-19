@@ -4,8 +4,8 @@ output:
   pdf_document: default
   html_document: default
 ---
+\section{Generating Data}
 
-\textcolor{red}{Need to rename Z to X to be consistent across my different write ups.}
 Goal is to generate outcomes using the model
 $$
 Y_{it,k}^0 = \delta_{t,k} + \mathbf{Z}_{i,t}' \boldsymbol{\theta}_{t,k} + \boldsymbol{\mu}_{i,t}\boldsymbol{\lambda}_{t,k} ,\quad\text{leaving out contribution from }\varepsilon_{itk}.
@@ -21,7 +21,7 @@ In particular:
 
 
 
-```{r}
+```{r, echo=FALSE}
 # Set up chunk
 library(MASS)
 set.seed(215)
@@ -32,46 +32,46 @@ k = 2 # number of outcomes
 r = 2 # dimension of latent space.
 ```
 
-Generate delta t,k
+\subsection{Generate $\delta_{t,k}$}
 
 For $k\in 1,2$, want to generate
 $$
 \delta_{t,k} = \delta_{t-1,k} + \xi, \quad \xi\sim N(0,0.1), \delta_{1,k} \sim N(1,1).
 $$
-```{r}
+```{r, echo=FALSE}
 dtk_mat <- matrix(NA, 3, 2)
 
-# generate for k = 1
+# generate for k = 1, 2
 initial_values <- rnorm(2, 1, 1)
+# k = 1
 d11 <- initial_values[1]
-d12 <- initial_values[2] # good here
+# k = 2
+d12 <- initial_values[2] 
 
+# now create the t = 2,3
 for (i in 1:3) {
   prev <- if (i == 1) c(d11, d12) else dtk_mat[i-1, ]
   dtk_mat[i, ] <- prev + rnorm(2,0,0.1)
 }
 
-# each of these represent the values of dtk for some k in 1,2.
-dt1 <- dtk_mat[,1]
-dt2 <- dtk_mat[,2]
+dtk_mat <- t(dtk_mat)
+cat("Unit independent time trend  (for each outcome): \n")
+dtk_mat
+cat("\n")
 ```
-Note: this adds the random noise that I left out of the DGP, due to $\xi$.
+First row is outcome $k=1$, second is $k=2$. Note: this adds the random noise that I left out of the DGP, due to $\xi$.
 
-Generating the $\mathbf{Z}_{i,t}$.
+\subsection{Generating the $\mathbf{Z}_{i,t}$}
 
 Let $\mathbf{Z}_{1,1} = (\varphi_1, \varphi_2,\varphi_3)$, and $\zeta_1 = (\zeta_{11}, \zeta_{12},\zeta_{13})$. We set:
 $$
-Z_{1,2} = Z_{1,1} + \zeta_1,
+\mathbf{Z}_{1,2} = \mathbf{Z}_{1,1} + \zeta_1,
 $$ and 
 $$
-Z_{1,3} = Z_{1,1} + 2 \zeta_1,
+\mathbf{Z}_{1,3} = \mathbf{Z}_{1,1} + 2 \zeta_1,
 $$
 to give time trends to the covariates.
-```{r}
-# for each pair (i,t) there are two latent "observations"
-# because we have chosen the dimension of the latent space to be 2
-# this will require generating 9 vectors of dimension (2,1)
-
+```{r, echo=FALSE}
 size <- 3
 mean = c(0,0,0)
 cov = matrix(c(1,0,0,0,1,0,0,0,1),ncol = 3) # identity matrix
@@ -89,23 +89,69 @@ Zeta_1 <- Zeta[1,]
 Zeta_2 <- Zeta[2,]
 Zeta_3 <- Zeta[3,]
 
+make_Z_matrix <- function(z, zeta, T=3) {
+  mat <- matrix(NA, nrow=T, ncol=length(z))
+  for (i in 1:T) {
+    mat[i,] <- z + ((i-1) * zeta)
+  }
+  mat
+}
 
+# columns of Z_1matrix, eg, represent a covariate changing over time.
+# rows of Z_1matrix represent Z_{1,t} for t in 1,2,3
+Z_1matrix <- make_Z_matrix(z_1, Zeta_1)
+Z_2matrix <- make_Z_matrix(z_2, Zeta_2)
+Z_3matrix <- make_Z_matrix(z_3, Zeta_3)
 
+cat("Covariates for unit 1: \n")
+Z_1matrix
+cat("\n")
 
+cat("Covariates for unit 2: \n")
+Z_2matrix
+cat("\n")
 
-
-# I'm creating the Z_it here.
-
+cat("Covariates for unit 2: \n")
+Z_2matrix
+cat("\n")
 ```
+\subsection{Generate the $\boldsymbol{\mu}_{i,t}$}
 
+We use a similar procedure to the generation of the observed covariates. For instance, the vector $\boldsymbol{\mu}_{1,1}$ has dimension 2, and we add a latent time trend in each latent factor through the repeated addition of $\zeta_{1}*$ (star to differentiate from $\zeta_1$). The three matrices we end up with correspond to the three units in the simulation.
+
+```{r,echo=FALSE}
+# Latent factors: dimension 2, independent of Z
+mu_mean <- c(0, 0)
+mu_cov  <- matrix(c(1,0,0,1), ncol = 2)
+
+# Initial factor values for each unit
+M <- mvrnorm(n = 3, mu = mu_mean, Sigma = mu_cov)
+m_1 <- M[1,]
+m_2 <- M[2,]
+m_3 <- M[3,]
+
+# Factor drift over time (analogous to Zeta)
+Xi <- mvrnorm(n = 3, mu = mu_mean, Sigma = mu_cov)
+Xi_1 <- Xi[1,]
+Xi_2 <- Xi[2,]
+Xi_3 <- Xi[3,]
+
+# Build time-varying factor matrices (analogous to make_Z_matrix)
+M_1matrix <- make_Z_matrix(m_1, Xi_1)
+M_2matrix <- make_Z_matrix(m_2, Xi_2)
+M_3matrix <- make_Z_matrix(m_3, Xi_3)
+M_1matrix
+```
+\subsection{Generate $\boldsymbol{\theta}_{t,k}$ and $\boldsymbol{\lambda}_{t,k}$}
 Create the 6 $(t\times k)$ loading vectors $\boldsymbol{\theta}_{t,k}$ each with dimension $(3,1)$.
-Create the 6 $(t\times k)$ loading vectors for $\boldsymbol{\lambda}_{t,k}$ each with dimension $(2,1)$.
-```{r}
-set.seed(215) 
 
+Create the 6 $(t\times k)$ loading vectors for $\boldsymbol{\lambda}_{t,k}$ each with dimension $(2,1)$.
+```{r, echo=FALSE}
 theta <- matrix(NA, nrow = 6, ncol = 3)
 for (i in 1:6) {
-  theta[i,] <- rbinom(n=3, size = 1, p = 0.8)
+  # for binomial (0,1) loadings
+  #theta[i,] <- rbinom(n=3, size = 1, p = 0.8)
+  theta[i,] <- rnorm(n=3, mean=0, sd=1)
 }
 
 # rows of theta are the pairs of t,k.
@@ -115,7 +161,9 @@ cat("\n")
 
 lambda <- matrix(NA, nrow = 6, ncol = 2)
 for (i in 1:6) {
-  lambda[i,] <- rbinom(n=2, size = 1, p = 0.8)
+  # for binomial (0,1) loadings
+  # lambda[i,] <- rbinom(n=2, size = 1, p = 0.8)
+  lambda[i,] <- rnorm(n=2, mean=0, sd=1)
 }
 
 # rows of lambda correspond to pairs of t,k
@@ -124,121 +172,82 @@ lambda
 cat("\n")
 ```
 
-Generate factor loadings
-```{r}
-size_phi <- 3 # number of samples we want
-mean_vec_phi <- c(0,0)
-cov_phi <- matrix(c(1,0,0,1),ncol=2) # identity matrix
+\subsection{Combining Factors and Loadings}
+```{r, echo=FALSE}
+rows = 6
+cols = 3
 
-phi_sample <- mvrnorm(n = size_phi,
-                    mu = mean_vec_phi, 
-                    Sigma = cov_phi) 
-
-phi_sample
-
-#phi_sample[2,] # first set of factor loadings
-```
-Goal now is to generate the $\boldsymbol{\mu}_{i,t}$ according to:
-$$
-\mu_{i,t} = t \mu_{i,1}\quad\text{with } \mu_{i,1}\sim N(0,1)
-$$
-for each $i\in 1,2,3$. \textcolor{red}{Is it a problem that there's no relationship between the latent factors and the observed covariates?}
-
-
-
-Generate etas
-```{r}
-# generate six etas, since t x k = 6
-size_eta <- 6 # number of observations of 
-mean_vec_eta <- c(0,0)
-cov_eta <- matrix(c(1,0,0,1),ncol=2) # identity matrix
-
-eta_sample <- mvrnorm(n = size_eta,
-                    mu = mean_vec_eta, 
-                    Sigma = cov_eta) 
-
-```
-Generate lambdas from etas
-```{r}
-rho <- 1
-lambda_1_mat <- matrix(NA, nrow = 3, ncol = k)
-for (i in 1:3) {
-  prev <- if (i == 1) rep(0, k) else lambda_1_mat[i-1, ]
-  lambda_1_mat[i, ] <- rho * prev + eta_sample[i, ]
+# just a function to do special multiplication of factors times loadings.
+load_factors <- function(fact_mat, load_mat) {
+  output <- numeric(0)
+  fact_mat <- rbind(fact_mat, fact_mat)
+  for (i in 1:rows) {
+    # k = 1, t = 1,2,3, then k = 2, t = 1,2,3
+    output[i] <- sum(fact_mat[i,] * load_mat[i,])
+  }
+  # first row is k = 1
+  # second row is k = 2
+  output <- matrix(output, nrow = 2, ncol = cols)
+  return (output)
 }
 
-#mu_1_mat[3,] - mu_1_mat[2,] # check this worked. It did
 
-lambda_2_mat <- matrix(NA, nrow = 3, ncol = k)
-for (j in 1:3) {
-  prev <- if (j == 1) rep(0, k) else lambda_2_mat[j-1, ]
-  lambda_2_mat[j, ] <- rho * prev + eta_sample[j+3, ]
-}
+Z_1loaded <- load_factors(Z_1matrix, theta)
+Z_2loaded <- load_factors(Z_2matrix, theta)
+Z_3loaded <- load_factors(Z_3matrix, theta)
 
-lambda_2_mat[3,] - lambda_2_mat[2,] # check this worked. It did
-
-
-
-cat("lambda_1_mat: \n")
-lambda_1_mat
+cat("Unit 1 covariates times loadings: \n")
+Z_1loaded
 cat("\n")
 
-cat("lambda_2_mat: \n")
-lambda_2_mat
+cat("Unit 2 covariates times loadings: \n")
+Z_2loaded
+cat("\n")
+
+cat("Unit 3 covariates times loadings: \n")
+Z_3loaded
 cat("\n")
 ```
 
-Generate alphas, betas
-```{r}
-# not using any errors.
-sigma_alpha <- sqrt(0.5)
-sigma_beta <- 1
 
-ik <- 6
-tk <- 6
-itk <- 18
-
-alpha_ik <- rnorm(ik, mean = 0, sd = sigma_alpha)
-alpha_ik <- matrix(alpha_ik, nrow = 3, ncol = 2)
-
-beta_tk <- rnorm(tk, mean = 0, sd = sigma_beta)
-beta_tk <- matrix(beta_tk, nrow = 3, ncol = 2)
-
-alpha_ik
-beta_tk
-
-```
-Generate L matrix (product of factors and loadings)
-```{r}
-# want to do this in a vectorized way eventually
-# k= 1
-L_mat_1 <- matrix(NA, nrow = 3, ncol = 3)
-
-for (i in 1:3) {
-  for (j in 1:3) {
-    L_mat_1[i,j] = sum(phi_sample[i,] * mu_1_mat[j,])
-  }
-}
-
-# k = 2
-L_mat_2 <- matrix(NA, nrow = 3, ncol = 3)
-
-for (i in 1:3) {
-  for (j in 1:3) {
-    L_mat_2[i,j] = sum(phi_sample[i,] * mu_2_mat[j,])
-  }
-}
+```{r,echo=FALSE}
 
 
-# at the end do a row bind step to produce final matrix
-L_mat <- rbind(L_mat_1, L_mat_2)
-L_mat # these are the 18 factor loadings.
-```
+M_1loaded <- load_factors(M_1matrix, lambda)
+M_2loaded <- load_factors(M_2matrix, lambda)
+M_3loaded <- load_factors(M_3matrix, lambda)
 
-Generate Ys
-```{r}
-# How are the covariates related to the outcomes? 
+cat("########################################")
+
+cat("Unit 1 latent factors times loadings: \n")
+M_1loaded
+cat("\n")
+
+cat("Unit 2 latent factors times loadings: \n")
+M_2loaded
+cat("\n")
+
+cat("Unit 3 latent factors times loadings: \n")
+M_3loaded
+cat("\n")
 
 ```
+\subsection{Adding it All Up}
+```{r,echo=FALSE}
 
+outcomes_unit1 <- dtk_mat + Z_1loaded + M_1loaded
+outcomes_unit2 <- dtk_mat + Z_2loaded + M_2loaded
+outcomes_unit3 <- dtk_mat + Z_3loaded + M_3loaded
 
+cat("Outcomes for unit 1: \n")
+outcomes_unit1
+cat("\n")
+
+cat("Outcomes for unit 2: \n")
+outcomes_unit2
+cat("\n")
+
+cat("Outcomes for unit 3: \n")
+outcomes_unit3
+cat("\n")
+```
