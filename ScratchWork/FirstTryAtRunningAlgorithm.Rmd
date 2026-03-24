@@ -1,0 +1,377 @@
+---
+title: "FirstTryAtRunningAlgorithm"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,echo=FALSE}
+# reading in the data
+data <- readRDS("outcomes.rds")
+outcomes_unit1 <- data[1:2,1:3]
+outcomes_unit2 <- data[3:4,1:3]
+outcomes_unit3 <- data[5:6,1:3]
+```
+\section{New Idea}
+In the original synthetic control setting with one outcome, a single set of weights is sufficient to capture the relationship between the donor covariates and the treated unit's covariates. But with multiple outcomes, how can we use a single set of weights to capture the relationship for different sets of covariates? The problem of coming up with a set of weights seems under parameterized.
+
+\subsection{Simple Set Up}
+
+In a simple case, say we have two donor units, and two covariates. For a given $t<T_0$, we have:
+$$
+\vec{X}_t^1 = 
+\begin{pmatrix}
+x_{1t}^1 \\
+x_{2t}^1
+\end{pmatrix}\quad\text{and}\quad
+\mathbf{X}_{F,t} = 
+\begin{pmatrix}
+x_{1t}^2 & x_{1t}^3 \\
+x_{2t}^2 & x_{2t}^3 
+\end{pmatrix} = 
+\begin{pmatrix}
+\vec{v}_1 \\
+\vec{v}_2
+\end{pmatrix}.
+$$
+Then balancing the covariates requires solving the constrained minimization:
+$$
+\min_{\vec{w}\in \mathbb{R}^2} ||\vec{X}_t^1 - \mathbf{X}_{F,t} \vec{w}||
+$$
+subject to the constraints that $\sum_{j} w_j = 1$ and $w_j \geq 0$ for all $j$. 
+
+\subsection{The Problem}
+Now suppose that both:
+$$
+x_{1t}^1 = \sum_{j}w_j x_{1t}^j \quad\text{and}\quad x_{2t}^1 = \sum_{j}w_j x_{2t}^j,
+$$ are satisfied. Denote the rows of $\mathbf{X}_{F,t}$ by $v_1$ and $v_2$ respectively. Then since $x_{1t}^1 = k x_{2t}^1$, we have the relationship that:
+
+$$
+\vec{v}_1^T\vec{w} - k \vec{v}_2^T w = (\vec{v}_1 - k\vec{v}_2)^T \vec{w} = 0,
+$$ so that $\vec{w}$ lies in the orthogonal complement of $(\vec{v}_1 - k\vec{v}_2)\in \mathbb{R}^{N-1}$. As the number of predictors increases, $\vec{w}$ will be required to fall in the orthogonal complement of $\binom{p}{2}$ orthogonal complements. It is unlikely that these complements all intersect in a subspace of the original dimension.
+
+\subsection{Solution}
+
+Use a matrix $\mathbf{Q} \in \mathbb{R}^{2\times 3}$ to embed the donor covariates in a higher dimensional space. This effectively gives us more weights, and therefore more degrees of freedom. In particular, for each matrix $\mathbf{Q}\in \mathbb{R}^{2\times 3}$ let $\vec{w}^*\in\mathbb{R}^3$ denote the solution to:
+$$
+\min_{\vec{w}\in \mathbb{R}^3} ||\vec{X}_t^1 - (\mathbf{X}_{F,t}\mathbf{Q} )\vec{w}||.
+$$
+This creates "synthetic donors" which are linear combinations of the original donors. In this case, we have created three donor units out of the original two. The three synthetic donors are each different linear combinations of the original two donors:
+
+$$
+\mathbf{X}_{F,t}\mathbf{Q}  = 
+\begin{pmatrix}
+x_{1t}^2 & x_{1t}^3 \\
+x_{2t}^2 & x_{2t}^3 
+\end{pmatrix} 
+\begin{pmatrix}
+q_{11}& q_{21} & q_{31} \\
+q_{12}& q_{22}  & q_{32}
+\end{pmatrix}
+$$
+The problem is now to find the best embedding matrix $\mathbf{Q}$ of a given dimension.
+
+\subsection{Drawback}
+Perhaps there is a significant loss of interpretability. Or, perhaps no interpretability is lost - the weights now apply to different donors which previously did not exist.
+
+
+\subsection{Proof of Concept}
+
+### Solving the system with the original data
+```{r,echo=FALSE}
+library(quadprog)
+
+# Target vector
+d <- c(6, 2)
+
+# Matrix (note: by column filling in R)
+A <- matrix(c(2,3,4,5), ncol = 2)
+```
+
+In this example the treated unit covariates $\vec{X}_t^1$ and the donor unit covariates are $\mathbf{X}_{F,t}$ is:
+```{r, echo=FALSE}
+cat("The treated unit covariates: \n")
+d
+cat("\n")
+
+cat("The original matrix of covariates: \n")
+A
+cat("\n")
+```
+
+```{r,echo=FALSE}
+# Quadratic form: (d - A w)^T (d - A w)
+Dmat <- t(A) %*% A
+dvec <- t(A) %*% d
+
+
+Amat <- cbind(c(1,1), diag(2))
+bvec <- c(1, 0, 0)
+meq <- 1
+
+result <- solve.QP(Dmat, dvec, Amat, bvec, meq = meq)
+
+result$solution
+
+w <- result$solution
+
+loss <- sum((d - A %*% w)^2)
+cat("The loss for the ORIGINAL DONORS: \n")
+loss
+cat("\n")
+```
+
+### Embed the data in a higher dimension first
+```{r,echo=FALSE}
+library(quadprog)
+
+# Target vector
+d <- c(6, 2)
+
+# Matrix (note: by column filling in R)
+A <- matrix(c(2,3,4,5), ncol = 2)
+B <- matrix(c(0.8,0.3,0.3,0.7,0.3,0.3),ncol = 3)
+A <- A%*%B
+```
+The embedding matrix $\mathbf{Q}$ is:
+```{r,echo=FALSE}
+cat("Embedding matrix: \n")
+B
+cat("\n")
+```
+And the matrix of synthetic donor covariates $\mathbf{X}_{F,t}\mathbf{Q}$ is:
+```{r,echo=FALSE}
+cat("Synthetic Donor Covariates")
+B
+cat("\n")
+```
+
+```{r,echo = FALSE}
+# Quadratic form: (d - A w)^T (d - A w)
+epsilon <- 1e-8
+Dmat <- t(A) %*% A + epsilon * diag(3)
+dvec <- t(A) %*% d
+
+
+Amat <- cbind(c(1,1,1), diag(3))
+bvec <- c(1, 0, 0, 0)
+meq <- 1
+
+result <- solve.QP(Dmat, dvec, Amat, bvec, meq = meq)
+
+result$solution
+
+w <- result$solution
+
+loss <- sum((d - A %*% w)^2)
+cat("The loss using the SYNTHETIC DONORS: \n")
+loss
+cat("\n")
+```
+
+Try randomly initializing Q. What do we get?
+```{r}
+A <- matrix(c(2,3,4,5), ncol = 2)
+
+# Q can have negative entries.
+# The synthetic donors are still interpretable because we can see their covariates.
+# With the final weights, we can see the convex combination of synthetic donors (which is a valid interpretation)
+# just with synthetic people.
+generateQ <- function() {
+  size <- 3
+  mean = c(0,0,0)
+  cov = matrix(c(1,0,0,0,1,0,0,0,1),ncol = 3)
+  
+  Q <- mvrnorm(n = 2, mu = mean, Sigma = cov)
+  return (Q)
+}
+
+```
+
+```{r,echo = FALSE}
+# Constraints: weights sum to 1, non-negative
+Amat <- cbind(c(1,1,1), diag(3))
+bvec <- c(1, 0, 0, 0)
+meq <- 1
+
+set.seed(215)
+num_guesses <- 1000
+losses <- numeric(num_guesses)
+weights <- matrix(NA, nrow = num_guesses, ncol = 3)
+Qlist <- vector("list", num_guesses)
+
+for (i in 1:num_guesses) {
+  Q <- generateQ()
+  Qlist[[i]] <- Q
+  
+  AQ <- A %*% Q
+  epsilon <- 1e-8
+  Dmat <- t(AQ) %*% AQ + epsilon * diag(3)
+  dvec <- t(AQ) %*% d
+  
+  result <- solve.QP(Dmat, dvec, Amat, bvec, meq = meq)
+  w <- result$solution
+  weights[i, ] <- w
+  losses[i] <- sum((d - AQ %*% w)^2)
+}
+```
+
+```{r}
+# Find Q with smallest loss
+best_index <- which.min(losses)
+best_Q <- Qlist[[best_index]]
+best_w <- weights[best_index, ]
+best_loss <- losses[best_index]
+
+cat("Best Loss: \n")
+best_loss
+cat("\n")
+cat("Best Q Matrix: \n")
+best_Q
+cat("\n")
+cat("Best Weights: \n")
+best_w
+cat("\n")
+
+A %*% best_Q
+
+A %*% best_Q %*% best_w
+
+```
+
+```{r}
+# Unconstrained minimum loss - projection onto column space of A
+w_ols <- solve(t(A) %*% A) %*% t(A) %*% d
+min_possible_loss <- sum((d - A %*% w_ols)^2)
+min_possible_loss
+
+```
+
+
+
+
+
+
+
+
+
+Making Q larger. Looks like loss keeps dropping
+```{r}
+# Q can have negative entries.
+# The synthetic donors are still interpretable because we can see their covariates.
+# With the final weights, we can see the convex combination of synthetic donors (which is a valid interpretation)
+# just with synthetic people.
+generateQ <- function(c) {
+  mean = rep(0, c)
+  cov = diag(c)
+  Q <- mvrnorm(n = 2, mu = mean, Sigma = cov)
+  return (Q)
+}
+```
+
+```{r}
+A <- matrix(c(2,3,4,5), ncol = 2)
+A
+d <- c(6, 2)
+
+A %*% d
+
+```
+```{r}
+
+```
+```{r,echo = FALSE}
+experiment <- function(embedding_dim,n_guesses) {
+  c=embedding_dim
+  # Target vector
+  d <- c(6, 2)
+  # donor covariate matrix
+  A <- matrix(c(2,3,4,5), ncol = 2)
+  
+  # Constraints: weights sum to 1, non-negative
+  Amat <- cbind(rep(1, c), diag(c))
+  bvec <- c(1, rep(0,c))
+  meq <- 1
+  
+  set.seed(215)
+  num_guesses <- n_guesses
+  losses <- numeric(num_guesses)
+  weights <- matrix(NA, nrow = num_guesses, ncol = c)
+  Qlist <- vector("list", num_guesses)
+  
+  for (i in 1:num_guesses) {
+    Q <- generateQ(c)
+    Qlist[[i]] <- Q
+    
+    AQ <- A %*% Q
+    epsilon <- 1e-8
+    Dmat <- t(AQ) %*% AQ + epsilon * diag(c)
+    dvec <- t(AQ) %*% d
+    
+    result <- solve.QP(Dmat, dvec, Amat, bvec, meq = meq)
+    w <- result$solution
+    weights[i, ] <- w
+    losses[i] <- sum((d - AQ %*% w)^2)
+  }
+  # Find Q with smallest loss
+  best_index = which.min(losses)
+  best_loss <- losses[best_index]
+  return(best_loss)
+}
+```
+
+flat line clearly represents best possible matrix this method can find.
+
+```{r}
+n_guesses = 100000
+loss_per_dim <- numeric(100)
+for (i in 10:100) {
+  loss_per_dim[i] <- experiment(i,n_guesses)
+}
+
+plot(loss_per_dim, type = "l")
+
+```
+
+```{r}
+qnorm(0.8, lower.tail = FALSE)
+```
+
+
+```{r}
+# Find Q with smallest loss
+best_index <- which.min(losses)
+best_Q <- Qlist[[best_index]]
+best_w <- weights[best_index, ]
+best_loss <- losses[best_index]
+
+cat("Best Loss: \n")
+best_loss
+cat("\n")
+
+# cat("Best Q Matrix: \n")
+# best_Q
+# cat("\n")
+
+cat("Best Weights: \n")
+round(best_w, 3)
+cat("\n")
+
+cat("Best Synthetic Donors: \n")
+A %*% best_Q
+cat("\n")
+
+cat("Closest values produced: \n")
+A %*% best_Q %*% best_w
+cat("\n")
+
+
+```
+
+
+Try to run gradient descent on the matrix Q
+```{r}
+
+
+
+```

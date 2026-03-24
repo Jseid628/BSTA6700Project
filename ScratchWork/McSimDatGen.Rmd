@@ -251,3 +251,8 @@ cat("Outcomes for unit 3: \n")
 outcomes_unit3
 cat("\n")
 ```
+```{r,echo=FALSE}
+outcomes <- rbind(outcomes_unit1,outcomes_unit2, outcomes_unit3)
+
+saveRDS(outcomes, "outcomes.rds")
+```
