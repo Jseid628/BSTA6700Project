@@ -8,8 +8,8 @@ output:
 
 Goal is to generate outcomes using the model
 $$
-Y_{it,k}^0 = \delta_{t,k} + \mathbf{Z}_{i,t}' \boldsymbol{\theta}_{t,k} + \boldsymbol{\mu}_{i,t}\boldsymbol{\lambda}_{t,k} ,\quad\text{leaving out contribution from }\varepsilon_{itk}.
-$$
+Y_{it,k}^0 = \delta_{t,k} + \mathbf{Z}_{i,t}' \boldsymbol{\theta}_{k} + \boldsymbol{\mu}_{i,t}\boldsymbol{\lambda}_{k} ,\quad\text{leaving out contribution from }\varepsilon_{itk}.
+$$ which has time invariant factor loadings.
 In particular:
 \begin{itemize}
 \item For each pair $(t,k)$, $\delta_{t,k}$ is a scalar. 
@@ -27,12 +27,14 @@ library(MASS)
 set.seed(215)
 
 
-n_units = 5 # number of units (i)
-n_timepoints = 3 # number of time points (t)
+n_units = 3 # number of units (i)
+n_timepoints = 10 # number of time points (t)
 n_outcomes = 2 # number of outcomes (k)
 
-n_predictors = 5 # number of predictors (length of each vector z_{i,t}) (p)
-latent_dim = 2 # dimension of latent space. (l)
+t_0 = 5
+
+n_predictors = 10 # number of predictors (length of each vector z_{i,t}) (p)
+latent_dim = 4 # dimension of latent space. (l)
 
 verbose = FALSE
 ```
@@ -46,6 +48,7 @@ $$
 ```{r, echo=FALSE}
 # t = n_timepoints
 # k = n_outcomes
+
 
 # a function that creates the delta tk entries.
 make_dtk <- function(n_timepoints,n_outcomes) {
@@ -61,17 +64,16 @@ make_dtk <- function(n_timepoints,n_outcomes) {
   return(dtk_mat)
 }
 
-dtk_matrix <- make_dtk(n_timepoints,n_outcomes)
+dtk_matrix <- make_dtk(n_timepoints,n_outcomes) * 0.1
 
-cat("dtk_matrix: \n")
-print(dtk_matrix)
-cat("\n")
-```
-
-```{r}
-dtk_matrix[1,1]
+if (verbose == TRUE) {
+  cat("dtk_matrix: \n")
+  print(dtk_matrix)
+  cat("\n")
+}
 
 ```
+
 First row is outcome $k=1$, second is $k=2$. Note: this adds the random noise that I left out of the DGP, due to $\xi$.
 
 \subsection{Generating the $\mathbf{Z}_{i,t}$}
@@ -95,12 +97,15 @@ cov = diag(n_predictors) # identity matrix
 # generating initial covariate measurements
 Z <- mvrnorm(n = n_units, mu = mean, Sigma = cov) 
 # each row represents initial covariate measurements at t = 1, for each i in 1,...,n_units
-cat("Initial Covariate Measurements: \n")
-print(Z)
-cat("\n")
+if (verbose == TRUE) {
+  cat("Initial Covariate Measurements: \n")
+  print(Z)
+  cat("\n")
+}
+
 
 # Zeta determines how covariates change over time.
-Zeta <- mvrnorm(n = n_units, mu = mean, Sigma = cov) 
+Zeta <- mvrnorm(n = n_units, mu = mean, Sigma = cov) #* 0.1 # to smooth time trends
 
 # a function to apply Zeta to each row of the initial Z matrix
 make_Z_matrix <- function(z, zeta, n_timepoints) {
@@ -117,11 +122,14 @@ Z_matrices <- lapply(1:n_units, function(i) {
 })
 
 # print at most 5
-for (i in 1:min(n_units,5)){
-  cat("Covariates for unit ",i,"\n")
-  print(Z_matrices[[i]])
-  cat("\n")
+if (verbose == TRUE) {
+  for (i in 1:min(n_units,5)){
+    cat("Covariates for unit ",i,"\n")
+    print(Z_matrices[[i]])
+    cat("\n")
+  }
 }
+
 ```
 
 \subsection{Generate the $\boldsymbol{\mu}_{i,t}$}
@@ -136,7 +144,7 @@ mu_cov  <- diag(latent_dim)
 M <- mvrnorm(n = n_units, mu = mu_mean, Sigma = mu_cov)
 
 # Factor drift over time (analogous to Zeta)
-Xi <- mvrnorm(n = n_units, mu = mu_mean, Sigma = mu_cov)
+Xi <- mvrnorm(n = n_units, mu = mu_mean, Sigma = mu_cov) #*0.1 # to smooth time trends
 
 if (verbose == TRUE) {
   cat("Initial Factor Values: \n")
@@ -152,47 +160,49 @@ M_matrices <- lapply(1:n_units, function(i) {
   make_Z_matrix(M[i,], Xi[i,], n_timepoints = n_timepoints)
 })
 
-cat("M_matrices: \n")
-print(M_matrices)
-cat("\n")
+if (verbose == TRUE) {
+  cat("M_matrices: \n")
+  print(M_matrices)
+  cat("\n")
+}
+
+
 ```
 
 
-\subsection{Generate $\boldsymbol{\theta}_{t,k}$ and $\boldsymbol{\lambda}_{t,k}$}
-Create the 6 $(t\times k)$ loading vectors $\boldsymbol{\theta}_{t,k}$ each with dimension $(3,1)$.
+\subsection{Generate $\boldsymbol{\theta}_{k}$ and $\boldsymbol{\lambda}_{k}$}
+Create the $k$ loading vectors $\boldsymbol{\theta}_{k}$ each with dimension $(p,1)$.
 
-Create the 6 $(t\times k)$ loading vectors for $\boldsymbol{\lambda}_{t,k}$ each with dimension $(2,1)$.
+Create the $k$ loading vectors for $\boldsymbol{\lambda}_{k}$ each with dimension $(\ell,1)$.
 ```{r, echo=FALSE}
-tk <- (n_timepoints * n_outcomes)
 
-# generate observed covariate loadings
-theta <- matrix(NA, nrow = tk, ncol = n_predictors)
-for (i in 1:tk) {
-  # for binomial (0,1) loadings
-  #theta[i,] <- rbinom(n=3, size = 1, p = 0.8)
-  theta[i,] <- rnorm(n=n_predictors, mean=0, sd=1)
+# generate time invariant observed covariate loadings
+theta <- matrix(NA, nrow = n_outcomes, ncol = n_predictors)
+for (i in 1:n_outcomes) {
+  theta[i,] <- rnorm(n=n_predictors, mean=0, sd=0.1/sqrt(n_predictors))
 }
 
-# rows of theta are the pairs of t,k.
-# WLOG can say first t rows correspond to k = 1, etc
-cat("Loadings for observed covariates: \n")
-cat("(One row is one theta_tk vector) \n")
-theta
-cat("\n")
 
-# generate latent factor loadings
-lambda <- matrix(NA, nrow = tk, ncol = latent_dim)
-for (i in 1:tk) {
-  # for binomial (0,1) loadings
-  # lambda[i,] <- rbinom(n=2, size = 1, p = 0.8)
-  lambda[i,] <- rnorm(n=latent_dim, mean=0, sd=1)
+if (verbose==TRUE) {
+  cat("Loadings for observed covariates: \n")
+  cat("(One row is one theta_k vector) \n")
+  print(theta)
+  cat("\n")
 }
 
-# rows of lambda correspond to pairs of t,k
-cat("Loadings for unobserved latent factors: \n")
-cat("(One row is one lambda_tk vector) \n")
-lambda
-cat("\n")
+# generate time invariant latent factor loadings
+lambda <- matrix(NA, nrow = n_outcomes, ncol = latent_dim)
+for (i in 1:n_outcomes) {
+  lambda[i,] <- rnorm(n=latent_dim, mean=0, sd=0.1/sqrt(latent_dim))
+}
+
+if (verbose==TRUE) {
+  cat("Loadings for unobserved latent factors: \n")
+  cat("(One row is one lambda_k vector) \n")
+  print(lambda)
+  cat("\n")
+}
+
 ```
 
 \subsection{Adding it all up}
@@ -203,29 +213,39 @@ for (i in 1:n_units) {
   for (k in 1:n_outcomes) {
     for (t in 1:n_timepoints) {
       delta_tk <- dtk_matrix[t,k]
-      z_theta_itk <- Z_matrices[[i]][t,] %*% theta[((k-1)*n_timepoints) + t,]
-      mu_lambda_itk <- M_matrices[[i]][t,] %*% lambda[((k-1)*n_timepoints) + t,]
+      # take the product of n(0,1) * n(0,1) has variance 1. We add together n_predictors. 
+      # so the variance of the product is n_predictors. We standardize when we are generating
+      # the loadings /sqrt(n_predictors)
+      z_theta_itk <- (Z_matrices[[i]][t,] %*% theta[k,]) 
+      # also standardized the same way here
+      mu_lambda_itk <- (M_matrices[[i]][t,] %*% lambda[k,]) 
       
       Y[i,t,k] <- delta_tk + z_theta_itk + mu_lambda_itk
     }
   }
 }
+verbose = TRUE
+if (verbose==TRUE) {
+  cat("The final data Y, by unit: \n")
+  for (i in 1:n_units) {
+    cat("Unit ",i," timepoints x outcomes\n")
+    print(Y[i,,])
+    cat("\n")
+  }
+}
 
-# unit = 1. rows = timepoints, cols = outcomes
-cat("First unit data: (timepoints x outcomes): \n")
-print(Y[1,,])
-cat("\n")
 
 # stack the matrices
-Y_wide <- do.call(rbind, lapply(1:n_units, function(i) Y[i,,]))
+Y_stacked <- do.call(rbind, lapply(1:n_timepoints, function(i) t(Y[,i,])))
 cat("All unit outcomes stacked: \n")
-print(Y_wide)
+print(Y_stacked)
 cat("\n")
 
+```
 
-write.csv(Y_wide, "outcomes.csv", row.names = FALSE)
+```{r}
+write.csv(Y_stacked, "outcomes.csv", row.names = FALSE)
 
 metadata <- c(n_units, n_timepoints, n_outcomes)
 write.csv(metadata, "metadata.csv", row.names = c("n_units","n_timepoints","n_outcomes"))
-
 ```
