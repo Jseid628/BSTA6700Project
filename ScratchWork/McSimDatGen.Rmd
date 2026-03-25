@@ -27,7 +27,7 @@ library(MASS)
 set.seed(215)
 
 
-n_units = 3 # number of units (i)
+n_units = 4 # number of units (i)
 n_timepoints = 10 # number of time points (t)
 n_outcomes = 2 # number of outcomes (k)
 
