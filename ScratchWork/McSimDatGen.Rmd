@@ -13,20 +13,20 @@ $$ which has time invariant factor loadings.
 In particular:
 \begin{itemize}
 \item For each pair $(t,k)$, $\delta_{t,k}$ is a scalar. 
-\item For each pair $(i,t)$, the vector $\mathbf{Z}_{i,t}$ will have dimension $(3,1)$. (Observed covariate measurements)
-\item For each pair $(t,k)$, the vector $\boldsymbol{\theta}_{t,k}$ will have dimension $(3,1)$. 
-\item For each pair $(i,t)$, the vector $\boldsymbol{\mu}_{i,t}$ will have dimension $(2,1)$. (Latent factors)
-\item For each pair $(t,k)$, the vector $\boldsymbol{\lambda}_{t,k}$ will have dimension $(2,1)$
+\item For each pair $(i,t)$, the vector $\mathbf{Z}_{i,t}$ will have dimension $(\texttt{n\_covariates},1)$. (Observed covariate measurements)
+\item For each $k$, the vector $\boldsymbol{\theta}_{k}$ will have dimension $(\texttt{n\_covariates},1)$. 
+\item For each pair $(i,t)$, the vector $\boldsymbol{\mu}_{i,t}$ will have dimension $(\texttt{latent\_dim},1)$. (Latent factors)
+\item For each $k$, the vector $\boldsymbol{\lambda}_{k}$ will have dimension $(\texttt{latent\_dim},1)$
 \end{itemize}
 
 
 \subsection{Generate $\delta_{t,k}$}
 
-For $k \in \{1, \ldots, \texttt{n\_outcomes}\}$, want to generate
+For $k \in \{1, \ldots, \texttt{n\_outcomes}\}$, we generate
 $$
 \delta_{t,k} = \delta_{t-1,k} + \xi, \quad \xi\sim N(0,0.1), \delta_{1,k} \sim N(1,1).
 $$
-First row is outcome $k=1$, second is $k=2$, etc. Note: I believe this adds the random noise that I left out of the DGP, due to $\xi$.
+The first row is outcome $k=1$, second is $k=2$, etc. After some treatment time, we change $\xi$ to be drawn from $N(1,0.1)$, representing a treatment effect.
 
 \subsection{Generating the $\mathbf{Z}_{i,t}$}
 
@@ -44,9 +44,9 @@ to give time trends to the covariates.
 We use a similar procedure to the generation of the observed covariates. For instance, the vector $\boldsymbol{\mu}_{1,1}$ has dimension 2, and we add a latent time trend in each latent factor through the repeated addition of $\zeta_{1}*$ (star to differentiate from $\zeta_1$). The three matrices we end up with correspond to the three units in the simulation.
 
 \subsection{Generate $\boldsymbol{\theta}_{k}$ and $\boldsymbol{\lambda}_{k}$}
-Create the $k$ loading vectors $\boldsymbol{\theta}_{k}$ each with dimension $(p,1)$.
+Create the $k$ loading vectors $\boldsymbol{\theta}_{k}$ each with dimension $(\texttt{n\_covariates},1)$.
 
-Create the $k$ loading vectors for $\boldsymbol{\lambda}_{k}$ each with dimension $(\ell,1)$.
+Create the $k$ loading vectors for $\boldsymbol{\lambda}_{k}$ each with dimension $(\texttt{latent\_dim},1)$.
 
 ```{r, echo=FALSE}
 # Set up
@@ -67,7 +67,7 @@ make_dtk <- function(n_timepoints, n_outcomes, treatment_effect, treatment_time)
   # fill in the remaining rows:
   for (i in 2:n_timepoints) {
     if (treatment_effect==TRUE & i > treatment_time) {
-      effect <- (i-treatment_time) * rnorm(n_outcomes,1,0.1)
+      effect <- (i-treatment_time) * rnorm(n_outcomes,5,0.1)
     } else {
       effect <- rnorm(n_outcomes,0,0.1)
     }
@@ -212,7 +212,7 @@ scale_function <- function(Y,n_units, n_timepoints,n_outcomes,treatment_time) {
 # inputs to the generate data function
 n_units = 8 # number of units (i)
 n_timepoints = 8 # number of time points (t)
-n_outcomes = 3 # number of outcomes (k)
+n_outcomes = 4 # number of outcomes (k)
 
 n_predictors = 10 # number of predictors (length of each vector z_{i,t}) (p)
 latent_dim = 4 # dimension of latent space. (l)
@@ -257,7 +257,6 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
       }
     }
   }
-  verbose = TRUE
   if (verbose==TRUE) {
     cat("The final data Y, by unit: \n")
     for (i in 1:n_units) {
@@ -294,36 +293,36 @@ generate_data(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, treat
 
 
 
-```{r}
+```{r,echo=FALSE}
 
-# Staging ground for standardizing.
-
-# need to normalize using only pre-treatment - first t_0 rows
-set.seed(215)
-
-n_units = 3
-n_timepoints = 3
-n_outcomes = 2
-treatment_time = 2
-
-# Creates a 3x4x2 array of random integers between 1 and 100
-X <- array(sample(1:100, 24, replace = TRUE), dim = c(n_units, n_timepoints, n_outcomes))
-print(X)
-
-for (i in 1:n_outcomes) {
-  mat <- matrix(X[,,i], nrow=n_units, ncol = n_timepoints)
-  cat("pre-treatment sub-matrix: \n")
-  observable_mat <- mat[,1:treatment_time]
-  print(observable_mat)
-
-  # calculate the mean and sd of the observable data matrix
-  tot_mean <- mean(observable_mat)
-  vect <- as.vector(observable_mat)
-  tot_sd <- sd(vect)
-  
-  mat <- (mat - tot_mean) / tot_sd
-  X[,,i] <- mat
-}
+# # Staging ground for standardizing.
+# 
+# # need to normalize using only pre-treatment - first t_0 rows
+# set.seed(215)
+# 
+# n_units = 3
+# n_timepoints = 3
+# n_outcomes = 2
+# treatment_time = 2
+# 
+# # Creates a 3x4x2 array of random integers between 1 and 100
+# X <- array(sample(1:100, 24, replace = TRUE), dim = c(n_units, n_timepoints, n_outcomes))
+# print(X)
+# 
+# for (i in 1:n_outcomes) {
+#   mat <- matrix(X[,,i], nrow=n_units, ncol = n_timepoints)
+#   cat("pre-treatment sub-matrix: \n")
+#   observable_mat <- mat[,1:treatment_time]
+#   print(observable_mat)
+# 
+#   # calculate the mean and sd of the observable data matrix
+#   tot_mean <- mean(observable_mat)
+#   vect <- as.vector(observable_mat)
+#   tot_sd <- sd(vect)
+#   
+#   mat <- (mat - tot_mean) / tot_sd
+#   X[,,i] <- mat
+# }
 ```
 
 
