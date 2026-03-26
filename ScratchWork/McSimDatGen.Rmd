@@ -67,7 +67,7 @@ make_dtk <- function(n_timepoints, n_outcomes, treatment_effect, treatment_time)
   # fill in the remaining rows:
   for (i in 2:n_timepoints) {
     if (treatment_effect==TRUE & i > treatment_time) {
-      effect <- rnorm(n_outcomes,5,0.1)
+      effect <- (i-treatment_time) * rnorm(n_outcomes,1,0.1)
     } else {
       effect <- rnorm(n_outcomes,0,0.1)
     }
@@ -187,9 +187,7 @@ make_lambda <- function(n_outcomes, latent_dim) {
 scale_function <- function(Y,n_units, n_timepoints,n_outcomes,treatment_time) {
   for (i in 1:n_outcomes) {
     mat <- matrix(Y[,,i], nrow=n_units, ncol = n_timepoints)
-    cat("pre-treatment sub-matrix: \n")
     observable_mat <- mat[,1:treatment_time]
-    print(observable_mat)
   
     # calculate the mean and sd of the observable data matrix
     tot_mean <- mean(observable_mat)
@@ -259,7 +257,7 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
       }
     }
   }
-  verbose = FALSE
+  verbose = TRUE
   if (verbose==TRUE) {
     cat("The final data Y, by unit: \n")
     for (i in 1:n_units) {
