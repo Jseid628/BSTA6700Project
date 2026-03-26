@@ -59,15 +59,20 @@ set.seed(215)
 # k = n_outcomes
 
 # a function that creates the delta tk entries.
-make_dtk <- function(n_timepoints,n_outcomes) {
+make_dtk <- function(n_timepoints, n_outcomes, treatment_effect, treatment_time) {
   # initialize an empty matrix of dim t,k
   dtk_mat <- matrix(NA, n_timepoints, n_outcomes)
   # first row is random noise of length n_outcomes
   dtk_mat[1,] <- rnorm(n_outcomes, 1, 1)
   # fill in the remaining rows:
   for (i in 2:n_timepoints) {
+    if (treatment_effect==TRUE & i > treatment_time) {
+      effect <- rnorm(n_outcomes,5,0.1)
+    } else {
+      effect <- rnorm(n_outcomes,0,0.1)
+    }
     prev <- if (i==1) dtk_mat[1,] else dtk_mat[i-1,]
-    dtk_mat[i,] <- prev + rnorm(n_outcomes,0,0.1)
+    dtk_mat[i,] <- prev + effect
   }
   return(dtk_mat)
 }
@@ -177,28 +182,53 @@ make_lambda <- function(n_outcomes, latent_dim) {
 }
 
 ### ------------------------------------------------------------ ###
+
+# standardize per outcome using only the pretreatment info.
+scale_function <- function(Y,n_units, n_timepoints,n_outcomes,treatment_time) {
+  for (i in 1:n_outcomes) {
+    mat <- matrix(Y[,,i], nrow=n_units, ncol = n_timepoints)
+    cat("pre-treatment sub-matrix: \n")
+    observable_mat <- mat[,1:treatment_time]
+    print(observable_mat)
+  
+    # calculate the mean and sd of the observable data matrix
+    tot_mean <- mean(observable_mat)
+    vect <- as.vector(observable_mat)
+    tot_sd <- sd(vect)
+    
+    mat <- (mat - tot_mean) / tot_sd
+    Y[,,i] <- mat
+  }
+  Y_scaled <- Y
+  return (Y_scaled)
+}
+
+### ------------------------------------------------------------ ###
+
+# notes for (n_units, n_timepoints)
 # (4, 10) gives good similarity (4,20) is even better
 # (10, 10) gives great similarity (10, 20) is also extremely good
 # turning up n_outcomes to 3 it still works great with (10,20) and (10,10)
-# inputs to the generate data function
-n_units = 10 # number of units (i)
-n_timepoints = 10 # number of time points (t)
-n_outcomes = 3 # number of outcomes (k)
+# (8,8) embedding into 9 is a good example to show jing
 
-# add this as a functionality - want to include treatment effect after time t_0 < n_timepoints.
-# will modify the make_dtk function
-t_0 = 5 
+# inputs to the generate data function
+n_units = 8 # number of units (i)
+n_timepoints = 8 # number of time points (t)
+n_outcomes = 3 # number of outcomes (k)
 
 n_predictors = 10 # number of predictors (length of each vector z_{i,t}) (p)
 latent_dim = 4 # dimension of latent space. (l)
+
+treatment_effect = TRUE # should we generate the data with a treatment effect
+treatment_time = 5 # must be less than n_timepoints
 
 verbose = FALSE 
 
 ### ------------------------------------------------------------ ###
 
 # generates the synthetic data. Calls several other functions, above
-generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, verbose) {
-  dtk_matrix <- make_dtk(n_timepoints,n_outcomes) * 0.1
+generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, treatment_effect, treatment_time, verbose) {
+  dtk_matrix <- make_dtk(n_timepoints,n_outcomes, treatment_effect, treatment_time) * 0.1
   if (verbose == TRUE) {
     cat("dtk_matrix: \n")
     print(dtk_matrix)
@@ -229,7 +259,7 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
       }
     }
   }
-  verbose = TRUE
+  verbose = FALSE
   if (verbose==TRUE) {
     cat("The final data Y, by unit: \n")
     for (i in 1:n_units) {
@@ -240,14 +270,17 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
   }
   
   
-  # stack the matrices
-  Y_stacked <- do.call(rbind, lapply(1:n_timepoints, function(i) t(Y[,i,])))
+  
+  Y <- scale_function(Y,n_units, n_timepoints,n_outcomes,treatment_time)
+  
+  # stack the matrices                                    
+  Y_final <- do.call(rbind, lapply(1:n_timepoints, function(i) t(Y[,i,])))
   cat("All unit outcomes stacked: \n")
-  print(Y_stacked)
+  print(Y_final)
   cat("\n")
   
   # output information
-  write.csv(Y_stacked, "outcomes.csv", row.names = FALSE)
+  write.csv(Y_final, "outcomes.csv", row.names = FALSE)
   metadata <- c(n_units, n_timepoints, n_outcomes)
   write.csv(metadata, "metadata.csv", row.names = c("n_units","n_timepoints","n_outcomes"))
 }
@@ -255,7 +288,7 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
 ### ------------------------------------------------------------ ###
 
 # call the function
-generate_data(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, verbose)
+generate_data(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, treatment_effect, treatment_time, verbose)
 
 
 ```
@@ -263,7 +296,37 @@ generate_data(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, verbo
 
 
 
+```{r}
 
+# Staging ground for standardizing.
+
+# need to normalize using only pre-treatment - first t_0 rows
+set.seed(215)
+
+n_units = 3
+n_timepoints = 3
+n_outcomes = 2
+treatment_time = 2
+
+# Creates a 3x4x2 array of random integers between 1 and 100
+X <- array(sample(1:100, 24, replace = TRUE), dim = c(n_units, n_timepoints, n_outcomes))
+print(X)
+
+for (i in 1:n_outcomes) {
+  mat <- matrix(X[,,i], nrow=n_units, ncol = n_timepoints)
+  cat("pre-treatment sub-matrix: \n")
+  observable_mat <- mat[,1:treatment_time]
+  print(observable_mat)
+
+  # calculate the mean and sd of the observable data matrix
+  tot_mean <- mean(observable_mat)
+  vect <- as.vector(observable_mat)
+  tot_sd <- sd(vect)
+  
+  mat <- (mat - tot_mean) / tot_sd
+  X[,,i] <- mat
+}
+```
 
 
 
