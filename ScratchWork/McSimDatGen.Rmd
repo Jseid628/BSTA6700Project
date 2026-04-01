@@ -442,9 +442,7 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance) {
  
   
   ## calculate bias
-  # Calculates the bias using the noisless model t1
   model_t1 <- model[((n * t_total)+1):(n * (t_total+1)),]
-  cat("model_t1\n",model_t1)
   oracle_bias_sep <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_sep)
   oracle_bias_cat <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_cat)
   oracle_bias_avg <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_avg)
@@ -543,7 +541,6 @@ for (setting in settings_list) {
   mu_expanded <- mu$i[rep(1:n, (t_total+1)), ]
   
   # Element-wise multiplication
-  # this is the noiseless model used to calculate bias
   model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
   # simulation
   
@@ -571,7 +568,7 @@ for (setting in settings_list) {
     cond_sim[s,] <- result$cond
     
     ###### Adding this (JS) #####
-        if (s == 2) {
+        if (s == 3) {
           example_data[[setting$file_suffix]] <- list(
           out = result$out,
           out_trt = result$out_trt,

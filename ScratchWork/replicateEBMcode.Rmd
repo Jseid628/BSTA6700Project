@@ -1,0 +1,268 @@
+---
+title: "replicateEBMcode"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+Loads packages and removes loaded data
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+rm(list = ls())
+```
+
+Color palate, figure names, rho, and create a directory
+```{r}
+# The palette with black:
+cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# Change the weights in model to reflect importance of common factors
+rho <- 1
+bias_fig_name <- 'figure/all_bias_sims_n50_rho1.pdf'
+imbalance_fig_name <- 'figure/all_imbalance_sims_n50_rho1.pdf'
+dir.create("figureJS", showWarnings = FALSE)
+```
+
+In R, "osqp" solves quadratic programs of the form
+$$
+\min \frac{1}{2} x^TPx + q^Tx \quad\text{subject to}\quad l\leq Ax\leq u
+$$
+Let $\mathbf{X}_0$ be the matrix of control outcomes, and $\vec{X}_1$ be the target vector. The synth_qp function solves the problem:
+$$
+\min_{x} x^T \mathbf{X}_0 ^T \mathbf{X}_0 x - 2 (\vec{X}_1^T \mathbf{X}_0) x \quad\text{subject to}\quad \sum_{i} x_i = 1\quad\text{and}\quad 1 \geq x_i \geq 0,
+$$ which is precisely the QP:
+$$
+\min_{x}|| \vec{X}_1 - \mathbf{X}_0 x|| \quad\text{subject to}\quad \sum_i x_i = 1, \quad\text{and}\quad 1 \geq x_i \geq 0.
+$$
+
+In the EBM code, the QP being described is
+```{r}
+#' Solve the synth QP directly
+#' @param X1 Target vector
+#' @param X0 Matrix of control outcomes
+#' @noRd
+synth_qp <- function(X1, X0) {
+  
+  Pmat <- X0 %*% t(X0) # X^T X
+  qvec <- - t(X1) %*% t(X0)
+  
+  n0 <- nrow(X0)
+  A <- rbind(rep(1, n0), diag(n0))
+  l <- c(1, numeric(n0))
+  u <- c(1, rep(1, n0))
+  
+  settings = osqp::osqpSettings(verbose = FALSE,
+                                eps_rel = 1e-8,
+                                eps_abs = 1e-8)
+  sol <- osqp::solve_osqp(P = Pmat, q = qvec,
+                          A = A, l = l, u = u, 
+                          pars = settings)
+  
+  return(sol$x)
+}
+```
+And the matrix $A$, along with the vectors $l$ and $u$ are encoding the constraints described above.
+
+\textcolor{red}{Come back to this calculation. What is it doing?}
+The first entry is covariates, second is target, third is weights. This returns the bias of the SCM weights.
+```{r}
+##### Bias 
+SCMbias <- function(Y0,Y1,weights) {
+  synthY0 <- (Y0%*%weights)
+  gap <- Y1-synthY0 
+  return(gap)
+}
+```
+
+## Generating the factor model data:
+
+($\mu$ are factors, $\phi$ are factor loadings)
+
+EBM generates data according to two factor models in the simulation study
+\begin{itemize}
+\item[(1)] A simpler model:
+$$
+Y_{itk}(0) = \phi_i \mu_{t} + \varepsilon_{itk},
+$$ where multiple outcomes can be thought of as repeated (noisy) measurements of the same underlying quantity.
+\item[(2)] A more complex model:
+$$
+Y_{itk}(0) = \rho\phi_i \mu_{t} + (1-\rho)\phi_{ik}\mu_{tk} + \varepsilon_{itk}
+$$ to investigate how the "presence of idiosyncratic factors influence performance."
+\end{itemize}
+
+\textcolor{red}{not sure is this is actually how it starts} For the first model, EBM begins by creating a random noise term:
+$$
+\varepsilon_{itk} \sim N(0,1)
+$$ (where I've coded the variance to be 1).
+
+```{r}
+n = 3
+t_total <- 4
+k_total <- 2
+variance <- 1
+
+epsilon <- matrix(rnorm((n * t_total) * k_total, sd = sqrt(variance)), ncol = k_total)
+epsilon
+```
+
+
+
+
+Create a vector $\mu$ of length $N$, which contains decreasing sequence.
+This is for the simpler model.
+```{r}
+# factor loadings
+n <- 3 # number of units, the first unit is treated
+
+mu <- list(
+  c = seq(5, 1, length.out = n) # N x 1 vector
+)
+mu
+
+```
+Switch the first two elements in $\mu$ and create a vector of length $n$ called trt which stores 1 in the first place, and all zeros otherwise. Represents that the treated unit is the first unit in $\mu$? 
+```{r}
+mu$c[c(1, 2)] <- mu$c[c(2, 1)];
+trt <- numeric(n); trt[1] <- 1
+trt
+```
+
+With a specific setting selected (choice of number of time points and outcomes), a vector factors is created which has length $T+1$. 
+```{r}
+t_total <- 4
+k_total <- 3
+
+factors <- list(
+  c = seq(0.5, 1, length.out = t_total+1) # hand-code factor (common part)
+)
+
+factors
+```
+
+factors\$i holds the idiosyncratic part of the factors in a matrix of dimension $(T+1, K)$.
+```{r}
+factors$i <- matrix(0,nrow=t_total+1, ncol = k_total)
+factors
+```
+
+Now we create independent AR series across the factors, ie across $\mu_{tk}$, so that as $t$ increases, $\mu_{tk}$ staggers upward. These are generated independently for each outcome $k$.
+```{r}
+set.seed(1)
+for ( k in 1:k_total ) {
+  series <- arima.sim(model = list(ar = 0.5), n = t_total+1) # independent AR series across outcomes
+  factors$i[,k] <- 0.5 + (series - min(series)) * (1 - 0.5) / (max(series) - min(series))  # rescale so factors are in same range
+  factors$i[,k] <- sort(factors$i[,k])
+}
+
+factors
+```
+Next, EBM creates the factor loadings $\phi_{ik}$ for the idiosyncratic component. These are randomly generated for each unit and each outcome.
+
+For the more complex model. 
+
+Note that mu\$i contains $ik$ - these are the factor loadings for the idiosyncratic component.
+
+```{r}
+set.seed(1)
+mu$i <- matrix(0,nrow=n, ncol = k_total) # outcome idiosyncratic part of factor
+for (k in (1:k_total)) {
+  mu$i[,k] <- rnorm(n)
+  mu$i[,k] <- 1 + mu$i[,k] * (5 - 1) / (max(mu$i[,k] ) - min(mu$i[,k] )) # rescale so bias is in same range
+}
+
+mu
+```
+
+Using the oracle weights, examining the bias that results
+EBM considers two possibilities here. Denote the oracle weights by $\gamma^*$. 
+The vector of outcomes for the treated unit is:
+$$
+Y_{1,T+1,k} = \phi_1\mu_{T+1}
+$$
+For the control units, the outcomes are calculated as:
+$$
+Y_{i,T+1,k} = \phi_i \mu_{T+1}\quad\text{for}\quad i \in 2,3.
+$$
+Then the bias is calculated as:
+$$
+Y_{1,T+1,k} - \sum_{i=1}^2 Y_{i,T+1,k} \gamma_i^*
+$$ which is close to zero, since the weights are oracle weights.
+
+A similar calculation is performed to ensure that the oracle weights are unbiased under the model with idiosyncratic factors.
+```{r}
+# just the entry containing the 
+mu$c[trt]
+mu$c[-trt]
+
+theo_w <- synth_qp(mu$c[trt], as.matrix(mu$c[-trt]));
+theo_w
+
+# first entry is covariates, second is target, third is weights
+SCMbias(mu$c[-trt]*factors$c[t_total+1], mu$c[trt]*factors$c[t_total+1],theo_w)
+
+mu$i[trt,] <- t(theo_w)%*%mu$i[-trt,] # overwrite the idiosyncratic loadings to ensure oracle weights exist
+  
+theo_w <- synth_qp(c(mu$c[trt],mu$i[trt,]), as.matrix(cbind(mu$c[-trt],mu$i[-trt,]))); # confirm we can find the oracle weights
+SCMbias(mu$c[-trt]*factors$c[t_total+1] + mu$i[-trt,1]*factors$i[t_total+1,1],
+        mu$c[trt]*factors$c[t_total+1] + mu$i[trt,1]*factors$i[t_total+1,1], 
+        theo_w)
+```
+
+```{r}
+# create the model components
+# first column of factors gets the non-AR process time series 
+factors$i[,1] <- factors$c
+factors
+```
+If $N=3$, create a matrix called "factors\_expanded" which contains:
+$$
+\begin{pmatrix}
+\vec{\mu}_{1k}\\
+\vec{\mu}_{1k}\\
+\vec{\mu}_{1k} \\
+\vdots \\
+\vec{\mu}_{T+1k}\\
+\vec{\mu}_{T+1k}\\
+\vec{\mu}_{T+1k}
+\end{pmatrix}
+$$ 
+
+```{r}
+# Repeat each row of factors N times (expand to NT x K)
+factors_expanded <- factors$i[rep(1:(t_total+1), each = n), ]
+factors_expanded
+
+```
+
+```{r}
+# put the simpler model loadings into the first column of loadings.
+mu$i[,1] <- mu$c
+mu
+```
+
+Create a copy of $\phi$ for each time point 1 through $T+1$.
+```{r}
+mu_expanded <- mu$i[rep(1:n, (t_total+1)), ]
+mu_expanded
+
+```
+
+Perform the multiplication of $\phi_{ik}\mu_{tk}$.
+```{r}
+factors_expanded * mu_expanded
+```
+
+Final "model" encodes both the simpler model and the more complex model depending on the choice of $rho$. If we use the simpler model
+```{r}
+rho = 1
+model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
+cat("simpler model:\n")
+model
+
+rho = 0.9
+model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
+cat("complicated model (with AR process in factors):\n")
+model
+```
