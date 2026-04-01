@@ -473,7 +473,7 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance) {
 
 
 # factor loadings
-n <- 10 # number of units, the first unit is treated
+n <- 50 # number of units, the first unit is treated
 # mu <- c(2,1,3:n); # hand-code factor loadings for n = 5
 mu <- list(
   c = seq(5, 1, length.out = n) # N x 1 vector
