@@ -210,9 +210,9 @@ scale_function <- function(Y,n_units, n_timepoints,n_outcomes,treatment_time) {
 # (8,8) embedding into 9 is a good example to show jing
 
 # inputs to the generate data function
-n_units = 3 # number of units (i)
-n_timepoints = 4 # number of time points (t)
-n_outcomes = 2 # number of outcomes (k)
+n_units = 10 # number of units (i)
+n_timepoints = 20 # number of time points (t)
+n_outcomes = 10 # number of outcomes (k)
 
 n_predictors = 10 # number of predictors (length of each vector z_{i,t}) (p)
 latent_dim = 4 # dimension of latent space. (l)
@@ -220,7 +220,7 @@ latent_dim = 4 # dimension of latent space. (l)
 treatment_effect = FALSE # should we generate the data with a treatment effect
 treatment_time = 5 # must be less than n_timepoints
 
-verbose = TRUE 
+verbose = FALSE 
 
 ### ------------------------------------------------------------ ###
 
