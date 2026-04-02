@@ -2,6 +2,7 @@ import torch
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 
+
 def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None):
     if num_timepoints is None:
         num_timepoints = len(covariates)
@@ -64,7 +65,7 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
         optimizer.step()
         scheduler.step()
 
-        if step % 200 == 0:
+        if verbose and step % 200 == 0:
             print(f"Step {step:4d} | Loss: {loss.item():.8f}")
             print(f"Step {step:4d} | Loss: {loss.item():.8f} | w: {w_sol.detach().numpy().round(3)}")
             print(f"Grad norm: {Q.grad.norm().item():.8f}")

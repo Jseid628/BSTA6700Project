@@ -7,9 +7,16 @@ def morph(treated_data, control_data):
     K = treated_data.shape[1]        # 10
     N_minus_1 = control_data.shape[0] // T  # 1960 // 40 = 49
 
-    out_trt = treated_data.to_numpy()      # (40, 10)
-    out_control = control_data.to_numpy()  # (1960, 10)
+    if type(treated_data) is not np.ndarray:
+        out_trt = treated_data.to_numpy()
+    else:
+        out_trt = treated_data
 
+    if type(control_data) is not np.ndarray:
+        out_control = control_data.to_numpy()
+    else:
+        out_control = control_data
+        
     # Reshape control to (T, N-1, K) then transpose to (T, K, N-1)
     out_control_3d = out_control.reshape(T, N_minus_1, K).transpose(0, 2, 1)  # (40, 10, 49)
 

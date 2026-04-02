@@ -272,9 +272,11 @@ generate_data <- function(n_units, n_timepoints, n_outcomes, n_predictors, laten
   
   # stack the matrices                                    
   Y_final <- do.call(rbind, lapply(1:n_timepoints, function(i) t(Y[,i,])))
-  cat("All unit outcomes stacked: \n")
-  print(Y_final)
-  cat("\n")
+  if (verbose == TRUE) {
+    cat("All unit outcomes stacked: \n")
+    print(Y_final)
+    cat("\n")
+  }
   
   # output information
   write.csv(Y_final, "outcomes.csv", row.names = FALSE)
@@ -290,38 +292,6 @@ generate_data(n_units, n_timepoints, n_outcomes, n_predictors, latent_dim, treat
 
 ```
 
-
-```{r,echo=FALSE}
-
-# # Staging ground for standardizing.
-# 
-# # need to normalize using only pre-treatment - first t_0 rows
-# set.seed(215)
-# 
-# n_units = 3
-# n_timepoints = 3
-# n_outcomes = 2
-# treatment_time = 2
-# 
-# # Creates a 3x4x2 array of random integers between 1 and 100
-# X <- array(sample(1:100, 24, replace = TRUE), dim = c(n_units, n_timepoints, n_outcomes))
-# print(X)
-# 
-# for (i in 1:n_outcomes) {
-#   mat <- matrix(X[,,i], nrow=n_units, ncol = n_timepoints)
-#   cat("pre-treatment sub-matrix: \n")
-#   observable_mat <- mat[,1:treatment_time]
-#   print(observable_mat)
-# 
-#   # calculate the mean and sd of the observable data matrix
-#   tot_mean <- mean(observable_mat)
-#   vect <- as.vector(observable_mat)
-#   tot_sd <- sd(vect)
-#   
-#   mat <- (mat - tot_mean) / tot_sd
-#   X[,,i] <- mat
-# }
-```
 
 # Eli Ben Michael's code
 ```{r}
@@ -405,36 +375,48 @@ rmse <- function(Y0,Y1,weights) {
 #' @param k_total number of outcomes
 #' @param t_total number of pre-treatment periods
 #' @param variance variance of the noise term
-factor_sim <- function(model,n,trt,k_total,t_total,variance) {
+#' @param num_timepoints Number of training timepoints to use. Defaults to t_total.
+factor_sim <- function(model,n,trt,k_total,t_total,variance,num_timepoints=NULL) {
   
   ## generate factor model data
   
-  epsilon <- matrix(rnorm((n * t_total) * k_total, sd = sqrt(variance)), ncol = k_total)
+  # Use only first num_timepoints if specified
+  if (!is.null(num_timepoints) & t_total == 40) {
+    t_train <- num_timepoints
+  } else {
+    t_train <- t_total
+  }
+  
+  
+  
+  
+  epsilon <- matrix(rnorm((n * t_train) * k_total, sd = sqrt(variance)), ncol = k_total)
 
-  out <- model[1:(n * t_total),] + epsilon # (NXT) x (K) matrix of outcomes
-  t_trt <- rep(trt,t_total) # select the periods for the treated unit
-  out_trt <- matrix(out[which(t_trt==1),],nrow = t_total,ncol =k_total)  # T x K matrix of outcomes for the treated unit
+  out <- model[1:(n * t_train),] + epsilon # (NXT) x (K) matrix of outcomes
+  
+  t_trt <- rep(trt,t_train) # select the periods for the treated unit
+  out_trt <- matrix(out[which(t_trt==1),],nrow = t_train,ncol =k_total)  # T x K matrix of outcomes for the treated unit
   out_control <- out[which(t_trt==0),] # ((N-1)xT) x (K) matrix of outcomes for the control units
   
   
   ## calculate SCM weights
   out_trt_sep <- out_trt[,1]
-  out_control_sep <- matrix(out_control[,1], nrow = n-1,ncol=t_total)
+  out_control_sep <- matrix(out_control[,1], nrow = n-1,ncol=t_train)
   w_sep <- synth_qp(out_trt_sep, out_control_sep);
   r.svd <- svd(rbind(out_control_sep,out_trt_sep))
   largest_svd <- r.svd$d[1]^2/sum(r.svd$d^2)
-  cond <-  r.svd$d[1]/r.svd$d[t_total]
+  cond <-  r.svd$d[1]/r.svd$d[t_train]
  
   
-  out_trt_cat <- matrix(out_trt, nrow = t_total*k_total, ncol = 1)
-  out_control_cat <- matrix(out_control, nrow = n-1,ncol=t_total*k_total)
+  out_trt_cat <- matrix(out_trt, nrow = t_train*k_total, ncol = 1)
+  out_control_cat <- matrix(out_control, nrow = n-1,ncol=t_train*k_total)
   w_cat <- synth_qp(out_trt_cat, out_control_cat);
   r.svd <- svd(rbind(out_control_cat,t(out_trt_cat)))
   largest_svd <- cbind(largest_svd, r.svd$d[1]^2/sum(r.svd$d^2))
   cond <- cbind(cond,  r.svd$d[1]/r.svd$d[length(r.svd$d)])
   
   out_trt_avg <- rowMeans(out_trt)
-  out_control_avg <- matrix(rowMeans(out_control), nrow = n-1,ncol=t_total)
+  out_control_avg <- matrix(rowMeans(out_control), nrow = n-1,ncol=t_train)
   w_avg <- synth_qp(out_trt_avg, out_control_avg);
   r.svd <- svd(rbind(out_control_avg,t(out_trt_avg)))
   largest_svd <- cbind(largest_svd, r.svd$d[1]^2/sum(r.svd$d^2))
@@ -560,7 +542,7 @@ for (setting in settings_list) {
   
   for (s in 1:n_sim) {
     set.seed(s)
-    result <- factor_sim(model,n,trt,k_total,t_total,variance=1)
+    result <- factor_sim(model, n, trt, k_total, t_total, variance=1, num_timepoints=20)
     # result <- factor_sim(mu,factors_tk,n,trt,k_total,t_total,variance=1)
     bias_sim[s,] <- result$oracle_bias
     imbalance_sim[s,] <- result$imbalance
@@ -664,8 +646,8 @@ dev.off()
 
 ```{r}
 # Extracting the data from the factor model.
-example_data[["T_0=10,K=4"]]$out
-example_data[["T_0=40,K=10"]]$out_trt
+# example_data[["T_0=10,K=4"]]$out
+# example_data[["T_0=40,K=10"]]$out_trt
 
 treated_data <- example_data[["T_0=40,K=10"]]$out_trt
 control_data <- example_data[["T_0=40,K=10"]]$out_control
@@ -683,10 +665,28 @@ write.csv(example_data[[setting$file_suffix]]$w_avg,
 write.csv(example_data[[setting$file_suffix]]$model_t1, 
           paste0(setting_name, "_model_t1.csv"), row.names=FALSE)
 
-cat("model_t1 dimensions:", dim(result$model_t1), "\n")
-print(result$model_t1)
+# cat("model_t1 dimensions:", dim(result$model_t1), "\n")
 ```
 
 ```{r}
+library(reticulate)
+use_virtualenv("/Users/jseid1/venv311", required = TRUE)
+```
+
+```{r}
+morph <- import_from_path("morphData", path = ".")
+lq <- import_from_path("learnQ", path = ".")
+```
+
+```{r}
+result <- morph$morph(treated_data, control_data)
+
+train_target_vectors <- result[[1]]
+train_covariate_matrices <- result[[2]]
+test_target_vector <- result[[3]]
+test_covariate_matrix <- result[[4]]
+
+result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 5000L, 1.0, 10.0, TRUE)
+
 
 ```
