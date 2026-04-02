@@ -2,13 +2,13 @@ import torch
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 
-verbose = False
-
-def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose):
+def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None):
+    if num_timepoints is None:
+        num_timepoints = len(covariates)
 
     # unpacking inputs
-    covariate_matrices = covariates
-    target_vectors = targets
+    covariate_matrices = covariates[0:num_timepoints] 
+    target_vectors = targets[0:num_timepoints]
 
     # rows (num outcomes)
     Y_1 = covariate_matrices[0]
