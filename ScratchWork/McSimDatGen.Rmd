@@ -686,7 +686,7 @@ train_covariate_matrices <- result[[2]]
 test_target_vector <- result[[3]]
 test_covariate_matrix <- result[[4]]
 
-result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 5000L, 1.0, 10.0, TRUE)
+result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
 
 
 ```
