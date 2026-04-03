@@ -542,7 +542,7 @@ for (setting in settings_list) {
   
   for (s in 1:n_sim) {
     set.seed(s)
-    result <- factor_sim(model, n, trt, k_total, t_total, variance=1, num_timepoints=20)
+    result <- factor_sim(model, n, trt, k_total, t_total, variance=1, num_timepoints=40)
     # result <- factor_sim(mu,factors_tk,n,trt,k_total,t_total,variance=1)
     bias_sim[s,] <- result$oracle_bias
     imbalance_sim[s,] <- result$imbalance
@@ -679,14 +679,14 @@ lq <- import_from_path("learnQ", path = ".")
 ```
 
 ```{r}
-result <- morph$morph(treated_data, control_data)
-
-train_target_vectors <- result[[1]]
-train_covariate_matrices <- result[[2]]
-test_target_vector <- result[[3]]
-test_covariate_matrix <- result[[4]]
-
-result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
-
+# result <- morph$morph(treated_data, control_data)
+# 
+# train_target_vectors <- result[[1]]
+# train_covariate_matrices <- result[[2]]
+# test_target_vector <- result[[3]]
+# test_covariate_matrix <- result[[4]]
+# 
+# result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
+# 
 
 ```
