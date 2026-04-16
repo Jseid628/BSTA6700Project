@@ -92,24 +92,6 @@ Y_{itk}(0) = \rho\phi_i \mu_{t} + (1-\rho)\phi_{ik}\mu_{tk} + \varepsilon_{itk}
 $$ to investigate how the "presence of idiosyncratic factors influence performance."
 \end{itemize}
 
-\textcolor{red}{not sure is this is actually how it starts} For the first model, EBM begins by creating a random noise term:
-$$
-\varepsilon_{itk} \sim N(0,1)
-$$ (where I've coded the variance to be 1).
-
-```{r}
-n = 3
-t_total <- 4
-k_total <- 2
-variance <- 1
-
-epsilon <- matrix(rnorm((n * t_total) * k_total, sd = sqrt(variance)), ncol = k_total)
-epsilon
-```
-
-
-
-
 Create a vector $\mu$ of length $N$, which contains decreasing sequence.
 This is for the simpler model.
 ```{r}
@@ -266,3 +248,66 @@ model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_e
 cat("complicated model (with AR process in factors):\n")
 model
 ```
+Once the data is generated, it is passed to a function called factor\_sim.
+
+EBM begins by creating a random noise term, and adding it to the synthetic data
+$$
+\varepsilon_{itk} \sim N(0,1)
+$$ (where I've coded the variance to be 1).
+
+```{r}
+n = 3
+t_total <- 5
+k_total <- 3
+variance <- 1
+
+epsilon <- matrix(rnorm((n * t_total) * k_total, sd = sqrt(variance)), ncol = k_total)
+epsilon
+```
+Without the epsilon term, out is simply the data generated from the more complicated model:
+```{r}
+out <- model[1:(n * t_total),]
+out
+```
+
+Adding the noise term, we have:
+```{r}
+out <- model[1:(n * t_total),] + epsilon
+out
+```
+which represent noisy measurements of the outcomes.
+
+EBM creates a binary mask to extract the time periods (rows of out) corresponding to the treated unit:
+```{r}
+t_trt <- rep(trt,t_total)
+t_trt
+```
+
+```{r}
+out_trt <- matrix(out[which(t_trt==1),],nrow = t_total,ncol =k_total)  # T x K matrix of outcomes for the treated unit
+
+out_trt
+```
+Then EBM uses the same strategy (binary mask) to extract the time periods for the control units:
+```{r}
+out_control <- out[which(t_trt==0),]
+out_control
+```
+
+
+The SCM weights are then calculated, according to each of the three methods:
+
+First, a separate SC is fitted for each outcome
+```{r}
+## calculate SCM weights
+out_trt_sep <- out_trt[,1]
+out_control_sep <- matrix(out_control[,1], nrow = n-1,ncol=t_total)
+w_sep <- synth_qp(out_trt_sep, out_control_sep);
+r.svd <- svd(rbind(out_control_sep,out_trt_sep))
+largest_svd <- r.svd$d[1]^2/sum(r.svd$d^2)
+cond <-  r.svd$d[1]/r.svd$d[t_total]
+
+w_sep
+out_control_sep
+``` 
+which are the first outcome, for each control unit, and columns are time periods. The weights are calculated for 

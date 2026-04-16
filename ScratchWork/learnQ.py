@@ -2,7 +2,6 @@ import torch
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 
-
 def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None):
     if num_timepoints is None:
         num_timepoints = len(covariates)
@@ -13,7 +12,9 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
 
     # rows (num outcomes)
     Y_1 = covariate_matrices[0]
+    # m is number of outcomes
     m = Y_1.shape[0] 
+    # this gets the number of donors
     num_donors = Y_1.shape[1] 
     # Embedding dimension
     D = embedding_dim
