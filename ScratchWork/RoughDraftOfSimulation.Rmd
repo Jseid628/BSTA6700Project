@@ -31,11 +31,9 @@ library(furrr)
 
 rm(list = ls())
 
-use_virtualenv("/Users/jseid1/venv311", required = TRUE)
 
-# The functions I will use. Morph reshapes the data, lq fits my model
-morph <- import_from_path("morphData", path = ".")
-lq <- import_from_path("learnQ", path = ".")
+
+
 
 
 # The palette with black:
@@ -104,7 +102,11 @@ rmse <- function(Y0,Y1,weights) {
 #' @param t_total number of pre-treatment periods
 #' @param variance variance of the noise term
 #' @param num_timepoints Number of training timepoints to use. Defaults to t_total.
-factor_sim <- function(model,n,trt,k_total,t_total,variance, morph_mod, lq_mod, num_timepoints=NULL) {
+factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL) {
+  # importing the functions we want.
+  # Morph reshapes the data, lq fits my model to it.
+  morph <- reticulate::import_from_path("morphData", path = ".")
+  lq    <- reticulate::import_from_path("learnQ", path = ".")
 
   # Use only first num_timepoints if specified
   if (!is.null(num_timepoints) & t_total == 40) {
@@ -199,10 +201,10 @@ mu$c[c(1, 2)] <- mu$c[c(2, 1)]; # hand-code factor loadings for n = 50 (common p
 trt <- numeric(n); trt[1] <- 1; # select the unit with the second largest loadings to be the treated unit
 
 settings_list <- list(
-  list(t_total=10, k_total=4, file_suffix="T_0=10,K=4"),
-  list(t_total=10, k_total=10, file_suffix="T_0=10,K=10"),
-  list(t_total=40, k_total=4, file_suffix="T_0=40,K=4"),
-  list(t_total=40, k_total=10, file_suffix="T_0=40,K=10")
+  list(t_total=10, k_total=4, file_suffix="T_0=10,K=4")#,
+  # list(t_total=10, k_total=10, file_suffix="T_0=10,K=10"),
+  # list(t_total=40, k_total=4, file_suffix="T_0=40,K=4"),
+  # list(t_total=40, k_total=10, file_suffix="T_0=40,K=10")
 )     # incorporate all settings into a loop
 
 all_bias_sim_long <- data.frame()
@@ -260,7 +262,7 @@ for (setting in settings_list) {
   model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
   # simulation
   
-  n_sim <- 5
+  n_sim <- 10
   columns <- c("sep","cat","avg") 
   bias_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
   colnames(bias_sim) <- columns
@@ -273,18 +275,29 @@ for (setting in settings_list) {
   cond_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
   colnames(cond_sim) <- columns 
   
-  for (s in 1:n_sim) {
+  # Claude helped me write this parallelization piece
+  plan(multisession, workers = 14)
+  
+  all_results <- future_map(1:n_sim, function(s) {
+    library(reticulate)
+    library(dplyr)
+    use_virtualenv("/Users/jseid1/venv311", required = TRUE)
+    
     set.seed(s)
-    # simulate the data. 
+    factor_sim(model, n, trt, k_total, t_total, variance = 1, num_timepoints = 40)
     
-    
-    result <- factor_sim(model, n, trt, k_total, t_total, variance=1, morph_mod = morph, lq_mod = lq, num_timepoints=40)
-    # result <- factor_sim(mu,factors_tk,n,trt,k_total,t_total,variance=1)
-    bias_sim[s,] <- result$oracle_bias
-    imbalance_sim[s,] <- result$imbalance
-    largest_svd_sim[s,] <- result$largest_svd
-    cond_sim[s,] <- result$cond
+  }, .options = furrr_options(seed=NULL,globals = c("factor_sim", "model", "n", "trt",
+                                           "k_total", "t_total", "synth_qp",
+                                           "SCMbias", "rmse")),
+  .progress = TRUE)
 
+  # Then reassemble 
+  for (s in 1:n_sim) {
+    result <- all_results[[s]]
+    bias_sim[s,]        <- result$oracle_bias
+    imbalance_sim[s,]   <- result$imbalance
+    largest_svd_sim[s,] <- result$largest_svd
+    cond_sim[s,]        <- result$cond
   }
   
   # check the results
@@ -369,47 +382,7 @@ dev.off()
 
 ```
 
-```{r}
-# Extracting the data from the factor model.
-# example_data[["T_0=10,K=4"]]$out
-# example_data[["T_0=40,K=10"]]$out_trt
-
-treated_data <- example_data[["T_0=40,K=10"]]$out_trt
-control_data <- example_data[["T_0=40,K=10"]]$out_control
-
-write.csv(treated_data, "treated_data.csv", row.names = FALSE)
-write.csv(control_data, "control_data.csv", row.names = FALSE)
-
-setting_name <- gsub(",", "_", setting$file_suffix)  # clean up filename
-write.csv(example_data[[setting$file_suffix]]$w_sep, 
-          paste0(setting_name, "_w_sep.csv"), row.names=FALSE)
-write.csv(example_data[[setting$file_suffix]]$w_cat, 
-          paste0(setting_name, "_w_cat.csv"), row.names=FALSE)
-write.csv(example_data[[setting$file_suffix]]$w_avg, 
-          paste0(setting_name, "_w_avg.csv"), row.names=FALSE)
-write.csv(example_data[[setting$file_suffix]]$model_t1, 
-          paste0(setting_name, "_model_t1.csv"), row.names=FALSE)
-
-# cat("model_t1 dimensions:", dim(result$model_t1), "\n")
-```
-
-
-Reticulate does not work with Mclapply.
-Do 1000 MC simulations.
 
 
 
-```{r}
-result <- morph$morph(treated_data, control_data)
 
-train_target_vectors <- result[[1]]
-train_covariate_matrices <- result[[2]]
-test_target_vector <- result[[3]]
-test_covariate_matrix <- result[[4]]
-
-result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
-
-
-print(result)
-
-```
