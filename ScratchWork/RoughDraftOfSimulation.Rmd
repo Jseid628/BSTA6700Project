@@ -3,11 +3,6 @@ title: "RoughDraftOfSimulation"
 output: html_document
 ---
 
-
-```{r}
-
-```
-
 # Eli Ben Michael's code
 ```{r}
 ######-------------------------------------------------------------- ELI BEN-MICHAEL'S CODE ---------------------------------------------------#######
@@ -31,10 +26,7 @@ library(furrr)
 
 rm(list = ls())
 
-
-
-
-
+start_time <- proc.time()
 
 # The palette with black:
 cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -43,15 +35,9 @@ rho <- 1
 bias_fig_name <- 'figure/all_bias_sims_n50_rho1.pdf'
 imbalance_fig_name <- 'figure/all_imbalance_sims_n50_rho1.pdf'
 
-# rho <- 0.5
-# bias_fig_name <- 'figure/all_bias_sims_n50_rho05.pdf'
-# imbalance_fig_name <- 'figure/all_imbalance_sims_n50_rho05.pdf'
-
-# rho <- 0
-# bias_fig_name <- 'figure/all_bias_sims_n50_rho0.pdf'
-# imbalance_fig_name <- 'figure/all_imbalance_sims_n50_rho0.pdf'
-
 dir.create("figure", showWarnings = FALSE)
+# store the simulation results.
+dir.create("results", showWarnings = FALSE)
 
 ##### SCM function -------------------------------------
 
@@ -159,24 +145,30 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   
   # using same embedding dimension for each different simulation setting. 
   result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
+  
+  Q_matrix <- result[[1]]
+  w_learnQ <- result[[2]]
+  
+  # we use the Q_weights just as w_sep, w_cat, w_avg
+  Q_weights <- Q_matrix %*% w_learnQ
     
   ## calculate bias
   model_t1 <- model[((n * t_total)+1):(n * (t_total+1)),]
+  
+  # just calculate the bias in the first outcome.
   oracle_bias_sep <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_sep)
   oracle_bias_cat <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_cat)
   oracle_bias_avg <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_avg)
-  
+
+   # Add bias calculation for Q weights here:
+  oracle_bias_Q <- SCMbias(model_t1[-trt,1],model_t1[trt,1],Q_weights) # this may not be the correct dimensions.
+
   ## calculate pre-treatment imbalance
   imbalance_sep <- rmse(t(out_control_sep),out_trt_sep,w_sep)
   imbalance_cat <- rmse(t(out_control_cat),out_trt_cat,w_cat)
   imbalance_avg <- rmse(t(out_control_avg),out_trt_avg,w_avg)
   
-  # return(list("oracle_bias" = c(oracle_bias_sep,oracle_bias_cat,oracle_bias_avg),
-  #             "imbalance" = c(imbalance_sep,imbalance_cat,imbalance_avg),
-  #             "largest_svd"=largest_svd,"cond"=cond ) )
-  
-  ##### Switching this for the above (JS) #######
-  return(list("oracle_bias" = c(oracle_bias_sep, oracle_bias_cat, oracle_bias_avg),
+    return(list("oracle_bias" = c(oracle_bias_sep, oracle_bias_cat, oracle_bias_avg,as.numeric(oracle_bias_Q)), 
             "imbalance" = c(imbalance_sep, imbalance_cat, imbalance_avg),
             "largest_svd" = largest_svd,
             "cond" = cond,
@@ -201,8 +193,8 @@ mu$c[c(1, 2)] <- mu$c[c(2, 1)]; # hand-code factor loadings for n = 50 (common p
 trt <- numeric(n); trt[1] <- 1; # select the unit with the second largest loadings to be the treated unit
 
 settings_list <- list(
-  list(t_total=10, k_total=4, file_suffix="T_0=10,K=4")#,
-  # list(t_total=10, k_total=10, file_suffix="T_0=10,K=10"),
+  list(t_total=10, k_total=4, file_suffix="T_0=10,K=4"),
+  list(t_total=10, k_total=10, file_suffix="T_0=10,K=10")#,
   # list(t_total=40, k_total=4, file_suffix="T_0=40,K=4"),
   # list(t_total=40, k_total=10, file_suffix="T_0=40,K=10")
 )     # incorporate all settings into a loop
@@ -262,16 +254,20 @@ for (setting in settings_list) {
   model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
   # simulation
   
-  n_sim <- 10
+  n_sim <- 2
+  # Adding Q column 
   columns <- c("sep","cat","avg") 
-  bias_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
-  colnames(bias_sim) <- columns
+  columns_bias <- c("sep","cat","avg","Q")
+  
+  bias_sim <- data.frame(matrix(nrow = 0, ncol = length(columns_bias))) 
+  colnames(bias_sim) <- columns_bias
   
   imbalance_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
   colnames(imbalance_sim) <- columns
   
   largest_svd_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
   colnames(largest_svd_sim) <- columns 
+  
   cond_sim <- data.frame(matrix(nrow = 0, ncol = length(columns))) 
   colnames(cond_sim) <- columns 
   
@@ -288,13 +284,12 @@ for (setting in settings_list) {
     
   }, .options = furrr_options(seed=NULL,globals = c("factor_sim", "model", "n", "trt",
                                            "k_total", "t_total", "synth_qp",
-                                           "SCMbias", "rmse")),
-  .progress = TRUE)
+                                           "SCMbias", "rmse")))
 
   # Then reassemble 
   for (s in 1:n_sim) {
     result <- all_results[[s]]
-    bias_sim[s,]        <- result$oracle_bias
+    bias_sim[s,]        <- result$oracle_bias 
     imbalance_sim[s,]   <- result$imbalance
     largest_svd_sim[s,] <- result$largest_svd
     cond_sim[s,]        <- result$cond
@@ -308,7 +303,7 @@ for (setting in settings_list) {
   
   
   bias_sim_long <- bias_sim %>% 
-    pivot_longer(columns, names_to = "method", values_to = "bias") %>% mutate(setting = setting$file_suffix)
+    pivot_longer(columns_bias, names_to = "method", values_to = "bias") %>% mutate(setting = setting$file_suffix)
   imbalance_sim_long <- imbalance_sim %>% 
     pivot_longer(columns, names_to = "method", values_to = "imbalance") %>% mutate(setting = setting$file_suffix)
   
@@ -317,29 +312,83 @@ for (setting in settings_list) {
   
   largest_svd_sim_long <- largest_svd_sim %>% 
     pivot_longer(columns, names_to = "method", values_to = "svd") %>% mutate(setting = setting$file_suffix)
+  
   cond_sim_long <- cond_sim %>% 
     pivot_longer(columns, names_to = "method", values_to = "cond") %>% mutate(setting = setting$file_suffix)
   
   all_largest_svd_sim_long <- rbind(all_largest_svd_sim_long, largest_svd_sim_long)
   all_cond_sim_long <- rbind(all_cond_sim_long, cond_sim_long)
+  
+  saveRDS(all_bias_sim_long, file = "results/sim_results.rds")
 }
 
+#### REMOVING THIS LOGIC TO SEE IF I CAN REPRODUCE IT PROPERLY #####
 
+# 
+# 
+# # Check the factor structure based on the share of variation explained and the conditional numbers
+# all_largest_svd_sim_long %>% filter(setting == "T_0=40,K=10") %>% group_by(method) %>%
+#   summarize(mean_x = mean(svd))
+# 
+# ratio <- all_cond_sim_long %>% filter(setting == "T_0=40,K=10" & method == "avg") %>% dplyr::select(cond) 
+# ratio <- ratio / all_cond_sim_long %>% filter( setting == "T_0=40,K=10" & method == "sep") %>% dplyr::select(cond) 
+# avg_cond_avg_v_sep <- mean(t(ratio)-1)
+# cat("Average ratio of conditional number for average over separate SCM-1",avg_cond_avg_v_sep,"\n" )
+# # Adjust the order of the setting
+# all_bias_sim_long$setting <- factor(all_bias_sim_long$setting, levels = c("T_0=10,K=4", "T_0=10,K=10", "T_0=40,K=4", "T_0=40,K=10"))
+# all_imbalance_sim_long$setting <- factor(all_imbalance_sim_long$setting, levels = c("T_0=10,K=4", "T_0=10,K=10", "T_0=40,K=4" , "T_0=40,K=10"))
+# 
+# 
+# # pdf('figure/all_bias_sims_n50_p05.pdf') #n09 = -0.9 AR; p09 = +0.9
+# pdf(bias_fig_name)
+# all_bias_sim_long %>%
+#   ggplot(aes(x=method, y=bias, fill=method)) +
+#   geom_boxplot(notch=FALSE,outlier.shape=NA) +
+#   stat_summary(fun=mean, geom="point", shape=20, size=2, color="black", fill="black") +
+#   facet_wrap(~setting, scales = "fixed", nrow = 2) + # Set scales as fixed
+#   geom_hline(yintercept = 0, color = "black") + # Add a horizontal line at 0 to all facets
+#   ylim(-0.25,2) + 
+#   labs(y = "Bias", x = "SC Method") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
+#         axis.text.y = element_text(size=12),
+#         axis.title.x = element_text(size=14, face="bold"),
+#         axis.title.y = element_text(size=14, face="bold"),
+#         plot.title = element_text(size=16, face="bold", hjust=0.5),
+#         plot.margin = unit(c(0,0,0,0), "lines"),
+#         aspect.ratio = 3/4) +
+#   scale_fill_manual(values=cbp1)
+# dev.off()
+# 
+# pdf(imbalance_fig_name)
+# all_imbalance_sim_long %>%
+#   ggplot(aes(x=method, y=imbalance, fill=method)) +
+#   geom_boxplot(notch=FALSE,outlier.shape=NA) +
+#   stat_summary(fun=mean, geom="point", shape=20, size=2, color="black", fill="black") +
+#   facet_wrap(~setting, scales = "fixed", nrow = 2) + 
+#   geom_hline(yintercept = 0, color = "black") + # Add a horizontal line at 0 to all facets
+#   ylim(0,1.75) + 
+#   labs(y = "Imbalance", x = "SC Method") +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1, size =12),
+#         axis.text.y = element_text(size=12),
+#         axis.title.x = element_text(size=14, face="bold"),
+#         axis.title.y = element_text(size=14, face="bold"),
+#         plot.title = element_text(size=16, face="bold", hjust=0.5),
+#         plot.margin = unit(c(0,0,0,0), "lines"),
+#         aspect.ratio = 3/4)+
+#   scale_fill_manual(values=cbp1)
+# dev.off()
 
-# Check the factor structure based on the share of variation explained and the conditional numbers
-all_largest_svd_sim_long %>% filter(setting == "T_0=40,K=10") %>% group_by(method) %>%
-  summarize(mean_x = mean(svd))
+elapsed <- proc.time() - start_time
+cat("Elapsed time:", elapsed["elapsed"], "seconds\n")
+```
 
-ratio <- all_cond_sim_long %>% filter(setting == "T_0=40,K=10" & method == "avg") %>% dplyr::select(cond) 
-ratio <- ratio / all_cond_sim_long %>% filter( setting == "T_0=40,K=10" & method == "sep") %>% dplyr::select(cond) 
-avg_cond_avg_v_sep <- mean(t(ratio)-1)
-cat("Average ratio of conditional number for average over separate SCM-1",avg_cond_avg_v_sep,"\n" )
-# Adjust the order of the setting
+```{r}
+all_bias_sim_long <- readRDS("results/sim_results.rds")
+
 all_bias_sim_long$setting <- factor(all_bias_sim_long$setting, levels = c("T_0=10,K=4", "T_0=10,K=10", "T_0=40,K=4", "T_0=40,K=10"))
-all_imbalance_sim_long$setting <- factor(all_imbalance_sim_long$setting, levels = c("T_0=10,K=4", "T_0=10,K=10", "T_0=40,K=4" , "T_0=40,K=10"))
 
-
-# pdf('figure/all_bias_sims_n50_p05.pdf') #n09 = -0.9 AR; p09 = +0.9
 pdf(bias_fig_name)
 all_bias_sim_long %>%
   ggplot(aes(x=method, y=bias, fill=method)) +
@@ -360,29 +409,7 @@ all_bias_sim_long %>%
   scale_fill_manual(values=cbp1)
 dev.off()
 
-pdf(imbalance_fig_name)
-all_imbalance_sim_long %>%
-  ggplot(aes(x=method, y=imbalance, fill=method)) +
-  geom_boxplot(notch=FALSE,outlier.shape=NA) +
-  stat_summary(fun=mean, geom="point", shape=20, size=2, color="black", fill="black") +
-  facet_wrap(~setting, scales = "fixed", nrow = 2) + 
-  geom_hline(yintercept = 0, color = "black") + # Add a horizontal line at 0 to all facets
-  ylim(0,1.75) + 
-  labs(y = "Imbalance", x = "SC Method") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size =12),
-        axis.text.y = element_text(size=12),
-        axis.title.x = element_text(size=14, face="bold"),
-        axis.title.y = element_text(size=14, face="bold"),
-        plot.title = element_text(size=16, face="bold", hjust=0.5),
-        plot.margin = unit(c(0,0,0,0), "lines"),
-        aspect.ratio = 3/4)+
-  scale_fill_manual(values=cbp1)
-dev.off()
-
 ```
-
-
 
 
 
