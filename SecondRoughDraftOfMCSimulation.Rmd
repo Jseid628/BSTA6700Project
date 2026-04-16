@@ -3,10 +3,7 @@ title: "SecondRoughDraftOfMCSimulation"
 output: html_document
 ---
 
-
-# Eli Ben Michael's code
 ```{r}
-######-------------------------------------------------------------- ELI BEN-MICHAEL'S CODE ---------------------------------------------------#######
 
 # ## Install devtools if not already installed
 # install.packages("devtools", repos='http://cran.us.r-project.org')
@@ -282,7 +279,7 @@ for (setting in settings_list) {
  
   all_bias_sim_long <- rbind(all_bias_sim_long, bias_sim_long)
   
-  saveRDS(all_bias_sim_long, file = "results/sim_results.rds")
+  saveRDS(all_bias_sim_long, file = "results1/sim_results.rds")
 }
 
 elapsed <- proc.time() - start_time
@@ -291,6 +288,7 @@ cat("Elapsed time:", elapsed["elapsed"], "seconds\n")
 
 ```{r}
 all_bias_sim_long <- readRDS("results/sim_results.rds")
+print(all_bias_sim_long)
 
 all_bias_sim_long$setting <- factor(all_bias_sim_long$setting, levels = c("T_0=10,K=4", "T_0=10,K=10", "T_0=40,K=4", "T_0=40,K=10"))
 
