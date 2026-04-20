@@ -1,9 +1,3 @@
----
-title: "SecondRoughDraftOfMCSimulation"
-output: html_document
----
-
-```{r}
 
 # ## Install devtools if not already installed
 # install.packages("devtools", repos='http://cran.us.r-project.org')
@@ -99,7 +93,7 @@ generateModel <- function(t_total, k_total, trt, mu, rho, n) {
   theo_w <- synth_qp(mu$c[trt], as.matrix(mu$c[-trt])); # confirm we can find the oracle weights
   SCMbias(mu$c[-trt]*factors$c[t_total+1], mu$c[trt]*factors$c[t_total+1],theo_w)
   
-   
+  
   mu$i[trt,] <- t(theo_w)%*%mu$i[-trt,] # overwrite the idiosyncratic loadings to ensure oracle weights exist
   
   theo_w <- synth_qp(c(mu$c[trt],mu$i[trt,]), as.matrix(cbind(mu$c[-trt],mu$i[-trt,]))); # confirm we can find the oracle weights
@@ -131,10 +125,9 @@ generateModel <- function(t_total, k_total, trt, mu, rho, n) {
 factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL) {
   # importing the functions we want.
   # Morph reshapes the data, lq fits my model to it.
-  # Need to figure out how to make these paths reproducible. - probably will need to replace with path to the files on own machine.
   morph <- reticulate::import_from_path("morphData", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
   lq    <- reticulate::import_from_path("learnQ", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
-
+  
   # Use only first num_timepoints if specified
   if (!is.null(num_timepoints) & t_total == 40) {
     t_train <- num_timepoints
@@ -143,7 +136,9 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   }
   
   epsilon <- matrix(rnorm((n * t_train) * k_total, sd = sqrt(variance)), ncol = k_total)
+  
   out <- model[1:(n * t_train),] + epsilon # (NXT) x (K) matrix of outcomes
+  
   t_trt <- rep(trt,t_train) # select the periods for the treated unit
   out_trt <- matrix(out[which(t_trt==1),],nrow = t_train,ncol =k_total)  # T x K matrix of outcomes for the treated unit
   out_control <- out[which(t_trt==0),] # ((N-1)xT) x (K) matrix of outcomes for the control units
@@ -155,7 +150,7 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   r.svd <- svd(rbind(out_control_sep,out_trt_sep))
   largest_svd <- r.svd$d[1]^2/sum(r.svd$d^2)
   cond <-  r.svd$d[1]/r.svd$d[t_train]
- 
+  
   out_trt_cat <- matrix(out_trt, nrow = t_train*k_total, ncol = 1)
   out_control_cat <- matrix(out_control, nrow = n-1,ncol=t_train*k_total)
   w_cat <- synth_qp(out_trt_cat, out_control_cat);
@@ -176,7 +171,7 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   control_data <- out_control
   
   result <- morph$morph(treated_data, control_data)
-
+  
   train_target_vectors <- result[[1]]
   train_covariate_matrices <- result[[2]]
   test_target_vector <- result[[3]]
@@ -190,7 +185,7 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   
   # we use the Q_weights just as w_sep, w_cat, w_avg
   Q_weights <- Q_matrix %*% w_learnQ
-    
+  
   ## calculate bias
   model_t1 <- model[((n * t_total)+1):(n * (t_total+1)),]
   
@@ -198,19 +193,19 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   oracle_bias_sep <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_sep)
   oracle_bias_cat <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_cat)
   oracle_bias_avg <- SCMbias(model_t1[-trt,1],model_t1[trt,1],w_avg)
-
-   # Add bias calculation for Q weights here:
+  
+  # Add bias calculation for Q weights here:
   oracle_bias_Q <- SCMbias(model_t1[-trt,1],model_t1[trt,1],Q_weights) # this may not be the correct dimensions.
   
-    return(list("oracle_bias" = c(oracle_bias_sep, oracle_bias_cat, oracle_bias_avg,as.numeric(oracle_bias_Q)), # added bias_Q
-            "out" = out,
-            "out_trt" = out_trt,
-            "out_control" = out_control,
-            "model_t1" = model_t1,
-            "w_sep" = w_sep,
-            "w_cat" = w_cat,
-            "w_avg" = w_avg
-))
+  return(list("oracle_bias" = c(oracle_bias_sep, oracle_bias_cat, oracle_bias_avg,as.numeric(oracle_bias_Q)), # added bias_Q
+              "out" = out,
+              "out_trt" = out_trt,
+              "out_control" = out_control,
+              "model_t1" = model_t1,
+              "w_sep" = w_sep,
+              "w_cat" = w_cat,
+              "w_avg" = w_avg
+  ))
 }
 
 # factor loadings
@@ -223,12 +218,12 @@ mu$c[c(1, 2)] <- mu$c[c(2, 1)]; # hand-code factor loadings for n = 50 (common p
 
 trt <- numeric(n); trt[1] <- 1; # select the unit with the second largest loadings to be the treated unit
 
- # incorporate all settings into a loop
+# incorporate all settings into a loop
 settings_list <- list(
   list(t_total=10, k_total=4, file_suffix="T_0=10,K=4"),
-  list(t_total=10, k_total=10, file_suffix="T_0=10,K=10"),
-  list(t_total=40, k_total=4, file_suffix="T_0=40,K=4"),
-  list(t_total=40, k_total=10, file_suffix="T_0=40,K=10")
+  list(t_total=10, k_total=10, file_suffix="T_0=10,K=10")
+  # list(t_total=40, k_total=4, file_suffix="T_0=40,K=4"),
+  # list(t_total=40, k_total=10, file_suffix="T_0=40,K=10")
 )    
 
 all_bias_sim_long <- data.frame()
@@ -246,7 +241,7 @@ for (setting in settings_list) {
   model <- generateModel(t_total, k_total, trt, mu, rho, n)
   
   # simulation
-  n_sim <- 1000
+  n_sim <- 1
   
   columns_bias <- c("sep","cat","avg","Q")
   bias_sim <- data.frame(matrix(nrow = 0, ncol = length(columns_bias))) 
@@ -260,8 +255,7 @@ for (setting in settings_list) {
     library(dplyr)
     library(osqp)
     
-    
-    use_virtualenv("/Users/jseid1/venv311", required = TRUE)
+    # use_virtualenv("/Users/jseid1/venv311", required = TRUE)
     
     iter_start = proc.time()
     result <-factor_sim(model, n, trt, k_total, t_total, variance = 1, num_timepoints = 40)
@@ -270,9 +264,9 @@ for (setting in settings_list) {
   }, .options = furrr_options(
     seed=215,
     globals = c("factor_sim","model","n","trt","k_total","t_total","synth_qp","SCMbias","rmse", "generateModel")
-    )
   )
-
+  )
+  
   # reassemble 
   for (s in 1:n_sim) {
     result <- all_results[[s]]
@@ -283,7 +277,7 @@ for (setting in settings_list) {
     ))
     bias_sim[s,] <- result$oracle_bias 
   }
-
+  
   # bias info
   bias_sim_long <- bias_sim %>% 
     pivot_longer(columns_bias, names_to = "method", values_to = "bias") %>% mutate(setting = setting$file_suffix)
@@ -296,21 +290,11 @@ for (setting in settings_list) {
     summarize(
       mean_time = mean(iter_length),
       median_time = median(iter_length),
-      sd_time = sd(iter_length),
       min_time = min(iter_length),
       max_time = max(iter_length)
     )
   
   # save the data
-  saveRDS(all_bias_sim_long, file = "results/sim_bias4-17.rds")
-  saveRDS(iteration_summary, file = "results/sim_time4-17.rds")
+  saveRDS(all_bias_sim_long, file = "results/sim_bias.rds")
+  saveRDS(iteration_summary, file = "results/sim_time.rds")
 }
-```
-
-
-```{r}
-
-sim_time <- readRDS("results/sim_time.rds")
-sim_time
-
-```
