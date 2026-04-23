@@ -1,8 +1,9 @@
 import torch
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
+torch.set_printoptions(precision=2)
 
-def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "zeros"):
+def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "id"):
     if num_timepoints is None:
         num_timepoints = len(covariates)
 
@@ -19,13 +20,21 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
     # Embedding dimension
     D = embedding_dim
 
+    minDim = min(num_donors, D)
+    eye_for_ortho_error = torch.eye(minDim, dtype=torch.float64)
+
+
     # Q is what we're optimizing - requires_grad=True tracks gradients
     torch.manual_seed(215)
-    if init_Q == "zeros":
-        Q = torch.zeros(num_donors, D, dtype=torch.float64, requires_grad=True)   
+    if init_Q == "id":
+        # Initialize Q as an identity matrix, which is orthogonal
+        Q = torch.eye(num_donors, D, dtype=torch.float64, requires_grad=True)   
     else:
         Q = torch.randn(num_donors, D, dtype=torch.float64, requires_grad=True)
 
+    lambda_l2_Q = reg_Q
+    lambda_l2_w = reg_w # large penalty, otherwise this overfits to the EBM data
+    
     # --- Define the inner QP once (structure never changes) ---
     w_var = cp.Variable(D)
     # Create a parameter for each target vector
@@ -33,14 +42,14 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
     discrepancy = [cp.sum_squares(d.numpy() - YQ_param @ w_var) for YQ_param, d in zip(YQ_params, target_vectors)]
     # I believe this is where I'll add in the many many target and covariate matrices
     constraints = [cp.sum(w_var) == 1, w_var >= 0]
-    objective = cp.Minimize(sum(discrepancy))
+
+    objective = cp.Minimize(sum(discrepancy) + (lambda_l2_w * cp.sum_squares(w_var)))
     prob = cp.Problem(objective, constraints)
     layer = CvxpyLayer(prob, parameters=YQ_params, variables=[w_var])           
 
     # --- Outer optimization loop ---
     optimizer = torch.optim.Adam([Q], lr=0.01)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.5)
-
 
     for step in range(n_iterations):
         optimizer.zero_grad()
@@ -55,21 +64,28 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
         # use l2 norm to regularize Q
         # regularization is needed for the EBM data because we want the synthetic covariates
         # to be in a reasonable range.
-        lambda_l2_Q = reg_Q
-        lambda_l2_w = reg_w # large penalty, otherwise this overfits to the EBM data
+        
 
         l2_Q = torch.sum(Q**2)
-        l2_w = torch.sum(w_sol**2)
-
+        
         # loss using the optimal w for this Q
-        loss = sum(torch.sum((d - YQ @ w_sol)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q) + (lambda_l2_w * l2_w)
+        loss = sum(torch.sum((d - YQ @ w_sol)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
 
         # this is where Q is updated
         loss.backward()                 
         optimizer.step()
         scheduler.step()
 
+        with torch.no_grad():
+            U, _, Vt = torch.linalg.svd(Q, full_matrices=False)
+            Q.data = U @ Vt 
+
         if verbose and step % 200 == 0:
+            if num_donors <= D:
+                ortho_error = torch.norm(Q @ Q.T - eye_for_ortho_error)
+            else:
+                ortho_error = torch.norm(Q.T @ Q - eye_for_ortho_error)
+            print("ortho error: \n", ortho_error)
             print(f"Step {step:4d} | Loss: {loss.item():.8f}")
             print(f"Step {step:4d} | Loss: {loss.item():.8f} | w: {w_sol.detach().numpy().round(3)}")
             print(f"Grad norm: {Q.grad.norm().item():.8f}")

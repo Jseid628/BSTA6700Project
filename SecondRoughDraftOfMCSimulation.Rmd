@@ -310,7 +310,7 @@ for (setting in settings_list) {
 
 ```{r}
 
-sim_time <- readRDS("results/sim_time.rds")
+sim_time <- readRDS("results/sim_time4-17.rds")
 sim_time
 
 ```
