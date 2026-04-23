@@ -21,8 +21,8 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
 
     # Q is what we're optimizing - requires_grad=True tracks gradients
     torch.manual_seed(215)
-    if init_Q == "zeros":
-        Q = torch.zeros(num_donors, D, dtype=torch.float64, requires_grad=True)   
+    if init_Q == "eye":
+        Q = torch.eye(num_donors, D, dtype=torch.float64, requires_grad=True)   
     else:
         Q = torch.randn(num_donors, D, dtype=torch.float64, requires_grad=True)
 

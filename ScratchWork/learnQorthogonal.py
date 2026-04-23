@@ -3,9 +3,15 @@ import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 torch.set_printoptions(precision=2)
 
-def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "id"):
+# should put an option to just fix the weights at 1/n
+def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "eye", fixed_weights=False):
     if num_timepoints is None:
         num_timepoints = len(covariates)
+
+    
+
+
+
 
     # unpacking inputs
     covariate_matrices = covariates[0:num_timepoints] 
@@ -23,10 +29,9 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
     minDim = min(num_donors, D)
     eye_for_ortho_error = torch.eye(minDim, dtype=torch.float64)
 
-
     # Q is what we're optimizing - requires_grad=True tracks gradients
     torch.manual_seed(215)
-    if init_Q == "id":
+    if init_Q == "eye":
         # Initialize Q as an identity matrix, which is orthogonal
         Q = torch.eye(num_donors, D, dtype=torch.float64, requires_grad=True)   
     else:
@@ -36,6 +41,9 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
     lambda_l2_w = reg_w # large penalty, otherwise this overfits to the EBM data
     
     # --- Define the inner QP once (structure never changes) ---
+    if fixed_weights:
+        w_fixed = torch.ones(D, dtype=torch.float64) / D
+
     w_var = cp.Variable(D)
     # Create a parameter for each target vector
     YQ_params = [cp.Parameter((m, D)) for _ in range(len(target_vectors))]
@@ -59,17 +67,17 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
         
         # solve for w given the matrix Q
         # * unpacks the list
-        w_sol, = layer(*YQ_list) 
+        if not fixed_weights:
+            w_sol, = layer(*YQ_list)
 
         # use l2 norm to regularize Q
-        # regularization is needed for the EBM data because we want the synthetic covariates
-        # to be in a reasonable range.
-        
-
         l2_Q = torch.sum(Q**2)
         
         # loss using the optimal w for this Q
-        loss = sum(torch.sum((d - YQ @ w_sol)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
+        if fixed_weights:
+            loss = sum(torch.sum((d - YQ @ w_fixed)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
+        else:
+            loss = sum(torch.sum((d - YQ @ w_sol)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
 
         # this is where Q is updated
         loss.backward()                 
@@ -95,7 +103,12 @@ def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbo
         print(f"\nFinal Loss: {loss.item():.8f}")
         print(f"Final w:    {w_sol.detach().numpy().round(4)}")
         print(f"Final Q:\n {Q.detach().numpy().round(4)}")
-    
+
     Q_final = Q.detach().numpy()
-    w_final = w_sol.detach().numpy()
-    return Q_final, w_final
+    if not fixed_weights:
+        w_final = w_sol.detach().numpy()
+        return Q_final, w_final
+    else:
+        w_final = w_fixed
+        return Q_final, w_final
+    
