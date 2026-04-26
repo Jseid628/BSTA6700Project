@@ -4,14 +4,9 @@ from cvxpylayers.torch import CvxpyLayer
 torch.set_printoptions(precision=2)
 
 # should put an option to just fix the weights at 1/n
-def learnQ(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "eye", fixed_weights=False):
+def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "eye", fixed_weights=False):
     if num_timepoints is None:
         num_timepoints = len(covariates)
-
-    
-
-
-
 
     # unpacking inputs
     covariate_matrices = covariates[0:num_timepoints] 
