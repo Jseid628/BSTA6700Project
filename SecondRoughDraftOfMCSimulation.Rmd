@@ -133,7 +133,11 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   # Morph reshapes the data, lq fits my model to it.
   # Need to figure out how to make these paths reproducible. - probably will need to replace with path to the files on own machine.
   morph <- reticulate::import_from_path("morphData", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
-  lq    <- reticulate::import_from_path("learnQ", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
+  # Commenting this out to use the orthogonal weights.
+  #lq    <- reticulate::import_from_path("learnQ", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
+  lqorth <- reticulate::import_from_path("learnQorthogonal", path = "/Users/jseid1/BSTA6700FinalProject/ScratchWork")
+  # so that we use the orthogonal weights.
+  orthogonal = TRUE
 
   # Use only first num_timepoints if specified
   if (!is.null(num_timepoints) & t_total == 40) {
@@ -182,11 +186,17 @@ factor_sim <- function(model,n,trt,k_total,t_total,variance, num_timepoints=NULL
   test_target_vector <- result[[3]]
   test_covariate_matrix <- result[[4]]
   
-  # using same embedding dimension for each different simulation setting. 
-  result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
-  
-  Q_matrix <- result[[1]]
-  w_learnQ <- result[[2]]
+  if (orthogonal == TRUE) {
+    result <- lqorth$learnQorthogonal(train_target_vectors, train_covariate_matrices, 10L, 1000L, 0.0, 0.0, FALSE, NULL, "eye", TRUE )
+    Q_matrix <- result[[1]]
+    w_learnQ <- result[[2]]
+  } else {
+    # using same embedding dimension for each different simulation setting. 
+    result <- lq$learnQ(train_target_vectors, train_covariate_matrices, 10L, 2000L, 1.0, 10.0, FALSE)
+    
+    Q_matrix <- result[[1]]
+    w_learnQ <- result[[2]]
+  }
   
   # we use the Q_weights just as w_sep, w_cat, w_avg
   Q_weights <- Q_matrix %*% w_learnQ
@@ -242,7 +252,6 @@ for (setting in settings_list) {
   t_total <- setting$t_total
   k_total <- setting$k_total   
   
-  # needs synth_qp,=
   model <- generateModel(t_total, k_total, trt, mu, rho, n)
   
   # simulation
@@ -255,7 +264,7 @@ for (setting in settings_list) {
   # Claude helped me write this parallelization piece
   plan(multisession, workers = 14)
   all_results <- future_map(1:n_sim, function(s) {
-    # sketchy putting these inside but apparently thats the way to do it
+    # sketchy putting these inside but apparently that's the way to do it
     library(reticulate)
     library(dplyr)
     library(osqp)
@@ -302,15 +311,15 @@ for (setting in settings_list) {
     )
   
   # save the data
-  saveRDS(all_bias_sim_long, file = "results/sim_bias4-17.rds")
-  saveRDS(iteration_summary, file = "results/sim_time4-17.rds")
+  saveRDS(all_bias_sim_long, file = "results/sim_biasOrtho_4-26.rds")
+  saveRDS(iteration_summary, file = "results/sim_timeOrtho_4-26.rds")
 }
 ```
 
 
 ```{r}
 
-sim_time <- readRDS("results/sim_time4-17.rds")
+sim_time <- readRDS("results/sim_timeOrtho_4-26.rds")
 sim_time
 
 ```

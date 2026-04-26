@@ -1,7 +1,14 @@
 import torch
+import sys
+import os
+stderr_backup = sys.stderr
+sys.stderr = open(os.devnull, 'w')
+
 import cvxpy as cp
 from cvxpylayers.torch import CvxpyLayer
 torch.set_printoptions(precision=2)
+sys.stderr = stderr_backup
+
 
 # should put an option to just fix the weights at 1/n
 def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, reg_w, verbose, num_timepoints = None, init_Q = "eye", fixed_weights=False):
@@ -38,17 +45,17 @@ def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, re
     # --- Define the inner QP once (structure never changes) ---
     if fixed_weights:
         w_fixed = torch.ones(D, dtype=torch.float64) / D
+    else: 
+        w_var = cp.Variable(D)
+        # Create a parameter for each target vector
+        YQ_params = [cp.Parameter((m, D)) for _ in range(len(target_vectors))]
+        discrepancy = [cp.sum_squares(d.numpy() - YQ_param @ w_var) for YQ_param, d in zip(YQ_params, target_vectors)]
+        # I believe this is where I'll add in the many many target and covariate matrices
+        constraints = [cp.sum(w_var) == 1, w_var >= 0]
 
-    w_var = cp.Variable(D)
-    # Create a parameter for each target vector
-    YQ_params = [cp.Parameter((m, D)) for _ in range(len(target_vectors))]
-    discrepancy = [cp.sum_squares(d.numpy() - YQ_param @ w_var) for YQ_param, d in zip(YQ_params, target_vectors)]
-    # I believe this is where I'll add in the many many target and covariate matrices
-    constraints = [cp.sum(w_var) == 1, w_var >= 0]
-
-    objective = cp.Minimize(sum(discrepancy) + (lambda_l2_w * cp.sum_squares(w_var)))
-    prob = cp.Problem(objective, constraints)
-    layer = CvxpyLayer(prob, parameters=YQ_params, variables=[w_var])           
+        objective = cp.Minimize(sum(discrepancy) + (lambda_l2_w * cp.sum_squares(w_var)))
+        prob = cp.Problem(objective, constraints)
+        layer = CvxpyLayer(prob, parameters=YQ_params, variables=[w_var])  
 
     # --- Outer optimization loop ---
     optimizer = torch.optim.Adam([Q], lr=0.01)
@@ -104,6 +111,6 @@ def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, re
         w_final = w_sol.detach().numpy()
         return Q_final, w_final
     else:
-        w_final = w_fixed
+        w_final = w_fixed.numpy()
         return Q_final, w_final
     
