@@ -13,7 +13,6 @@ suppressWarnings(suppressMessages({
   library(tidyverse)
   library(ggplot2)
   library(MASS)
-  library(reticulate)
   library(osqp)
   library(parallel)
   library(future)
@@ -26,7 +25,7 @@ source("/Users/jseid1/BSTA6700FinalProject/functionsForPackage/create_figure.R")
 
 # rho says how much common factors matter
 rho <- 1
-n_sim = 1000
+n_sim = 1
 parallel = TRUE
 set.seed(215)
 # only creates if folder does not exist

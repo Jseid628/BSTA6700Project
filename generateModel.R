@@ -40,4 +40,4 @@ mu_expanded <- mu$i[rep(1:n, (t_total+1)), ]
 # Element-wise multiplication
 model <- rho * as.vector(factors$c %x% mu$c) + (1-rho) * factors_expanded * mu_expanded
 
-return (mo)
+return (model)

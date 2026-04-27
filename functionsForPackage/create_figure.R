@@ -15,7 +15,7 @@ create_figure <- function() {
       stat_summary(fun=mean, geom="point", shape=20, size=2, color="black", fill="black") +
       facet_wrap(~setting, scales = "fixed", nrow = 2) + # Set scales as fixed
       geom_hline(yintercept = 0, color = "black") + # Add a horizontal line at 0 to all facets
-      ylim(-0.25,2) + 
+      coord_cartesian(ylim = c(-0.25, 2)) + 
       labs(y = "Bias", x = "SC Method") +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),
