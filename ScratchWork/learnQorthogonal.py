@@ -75,10 +75,11 @@ def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, re
         # use l2 norm to regularize Q
         l2_Q = torch.sum(Q**2)
         
-        # loss using the optimal w for this Q
         if fixed_weights:
-            loss = sum(torch.sum((d - YQ @ w_fixed)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
+            # no regularization with fixed weights and orthogonal Q matrix
+            loss = sum(torch.sum((d - YQ @ w_fixed)**2) for d, YQ in zip(target_vectors, YQ_list))
         else:
+            # loss using the optimal w for this Q
             loss = sum(torch.sum((d - YQ @ w_sol)**2) for d, YQ in zip(target_vectors, YQ_list)) + (lambda_l2_Q * l2_Q)
 
         # this is where Q is updated
@@ -97,13 +98,15 @@ def learnQorthogonal(targets, covariates, embedding_dim, n_iterations, reg_Q, re
                 ortho_error = torch.norm(Q.T @ Q - eye_for_ortho_error)
             print("ortho error: \n", ortho_error)
             print(f"Step {step:4d} | Loss: {loss.item():.8f}")
-            print(f"Step {step:4d} | Loss: {loss.item():.8f} | w: {w_sol.detach().numpy().round(3)}")
+            if not fixed_weights:
+                print(f"Step {step:4d} | Loss: {loss.item():.8f} | w: {w_sol.detach().numpy().round(3)}")
             print(f"Grad norm: {Q.grad.norm().item():.8f}")
 
     # --- Results --- #
     if (verbose == True):
         print(f"\nFinal Loss: {loss.item():.8f}")
-        print(f"Final w:    {w_sol.detach().numpy().round(4)}")
+        if not fixed_weights:
+            print(f"Final w:    {w_sol.detach().numpy().round(4)}")
         print(f"Final Q:\n {Q.detach().numpy().round(4)}")
 
     Q_final = Q.detach().numpy()
